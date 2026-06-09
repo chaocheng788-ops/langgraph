@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 你有梦想吗？</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; overflow: hidden; height: 100vh; }
+        #root { height: 100vh; display: flex; flex-direction: column; }
+
+        .header { background: linear-gradient(135deg, #16213e 0%, #0f3460 100%); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a3a6a; flex-shrink: 0; }
+        .header h1 { font-size: 18px; font-weight: 600; background: linear-gradient(90deg, #4fc3f7, #81c784); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header-subtitle { font-size: 11px; color: #4a6a8a; margin-left: 12px; }
+
+        .layout { display: flex; flex: 1; overflow: hidden; }
+
+        /* Sidebar */
+        .sidebar { width: 340px; background: #16213e; border-right: 1px solid #1a3a6a; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+        .sidebar-tabs { display: flex; border-bottom: 1px solid #1a3a6a; background: #0f1a30; }
+        .sidebar-tab { flex: 1; padding: 10px 8px; text-align: center; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; color: #6a8aaa; }
+        .sidebar-tab:hover { color: #b0c0d0; background: #1a2a4a; }
+        .sidebar-tab.active { color: #7c4dff; border-bottom-color: #7c4dff; background: #1a1a3e; }
+        .sidebar-tab .icon { margin-right: 4px; }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+
+        /* Form elements */
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-size: 11px; color: #8a9aaa; margin-bottom: 3px; font-weight: 500; }
+        .form-control { width: 100%; padding: 7px 10px; border: 1px solid #2a3a5a; border-radius: 5px; background: #1a1a3e; color: #e0e0e0; font-size: 13px; transition: border 0.2s; }
+        .form-control:focus { outline: none; border-color: #7c4dff; }
+        .form-control::placeholder { color: #4a5a7a; }
+        textarea.form-control { resize: vertical; font-family: inherit; min-height: 60px; }
+        select.form-control { cursor: pointer; }
+
+        .btn { padding: 7px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg, #7c4dff, #9c7dff); color: white; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,77,255,0.3); }
+        .btn-danger { background: linear-gradient(135deg, #c62828, #ef5350); color: white; }
+        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(198,40,40,0.3); }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+        .btn-success { background: linear-gradient(135deg, #2e7d32, #66bb6a); color: white; }
+        .btn-group { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
+
+        /* Config list items */
+        .config-item { padding: 10px 12px; background: #1a1a3e; border: 1px solid #2a2a5a; border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
+        .config-item:hover { border-color: #4a4a7a; background: #222250; }
+        .config-item.selected { border-color: #7c4dff; background: #2a1a5e; }
+        .config-item-header { display: flex; justify-content: space-between; align-items: center; }
+        .config-item-name { font-size: 13px; font-weight: 500; }
+        .config-item-desc { font-size: 11px; color: #6a8aaa; margin-top: 2px; }
+        .config-item-actions { display: flex; gap: 4px; }
+
+        .empty-state { text-align: center; padding: 30px 20px; color: #4a5a7a; font-size: 13px; }
+        .empty-state .big-icon { font-size: 32px; margin-bottom: 8px; }
+
+        /* Parameter editor */
+        .param-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; padding: 6px 8px; background: #0f1a2a; border-radius: 4px; }
+        .param-row input, .param-row select { padding: 4px 6px; border: 1px solid #2a3a5a; border-radius: 3px; background: #1a1a3e; color: #e0e0e0; font-size: 11px; }
+        .param-row .param-name { width: 90px; }
+        .param-row .param-type { width: 70px; }
+        .param-row .param-desc { flex: 1; }
+        .param-row .param-req { width: 50px; text-align: center; }
+
+        /* Main chat area */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #1a1a2e; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 16px 20px; }
+        .chat-input-area { padding: 12px 20px; border-top: 1px solid #1a3a6a; background: #16213e; }
+        .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
+        .chat-input-row textarea { flex: 1; padding: 10px 14px; border: 1px solid #2a3a5a; border-radius: 8px; background: #1a1a3e; color: #e0e0e0; font-size: 13px; resize: none; min-height: 44px; max-height: 120px; font-family: inherit; }
+        .chat-input-row textarea:focus { outline: none; border-color: #7c4dff; }
+        .chat-run-btn { padding: 10px 24px; border: none; border-radius: 8px; background: linear-gradient(135deg, #7c4dff, #9c7dff); color: white; font-size: 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .chat-run-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,77,255,0.4); }
+        .chat-run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* Messages */
+        .msg { margin-bottom: 12px; max-width: 85%; }
+        .msg.user { margin-left: auto; }
+        .msg.assistant { margin-right: auto; }
+        .msg.tool { margin-right: auto; opacity: 0.8; }
+        .msg-bubble { padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+        .msg.user .msg-bubble { background: #7c4dff33; border: 1px solid #7c4dff44; }
+        .msg.assistant .msg-bubble { background: #1a2a4a; border: 1px solid #2a4a7a; }
+        .msg.tool .msg-bubble { background: #2a2a1a; border: 1px solid #5a5a2a; font-size: 12px; }
+        .msg-label { font-size: 10px; color: #5a7a9a; margin-bottom: 4px; }
+
+        .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #3a4a6a; text-align: center; }
+        .welcome h2 { font-size: 22px; margin-bottom: 8px; }
+        .welcome p { font-size: 13px; line-height: 1.8; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 3px; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #323232; color: white; padding: 10px 20px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.3s; z-index: 200; }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* Config detail panel */
+        .config-detail { background: #0f1a2a; border-radius: 6px; padding: 12px; margin-top: 8px; }
+        .config-detail-title { font-size: 12px; color: #8a9aaa; margin-bottom: 8px; }
+        .params-header { display: flex; gap: 6px; font-size: 10px; color: #5a7a9a; padding: 4px 8px; }
+        .params-header .pn { width: 90px; }
+        .params-header .pt { width: 70px; }
+        .params-header .pd { flex: 1; }
+        .params-header .pr { width: 50px; text-align: center; }
+
+        .status-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; background: #2e7d32; color: white; }
+
+        @media (max-width: 768px) {
+            .sidebar { width: 280px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const API_BASE = '/api';
+
+        // ==================== API HELPERS ====================
+        async function api(path, options = {}) {
+            const res = await fetch(`${API_BASE}${path}`, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: res.statusText }));
+                throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+            return res.json();
+        }
+
+        // ==================== TOAST ====================
+        function Toast({ msg, show }) {
+            return <div className={`toast ${show ? 'show' : ''}`}>{msg}</div>;
+        }
+
+        // ==================== MAIN APP ====================
+        function App() {
+            const [tab, setTab] = useState('models');
+            const [models, setModels] = useState({});
+            const [tools, setTools] = useState({});
+            const [toolEnabled, setToolEnabled] = useState({});
+            const [prompt, setPrompt] = useState('');
+            const [toast, setToast] = useState({ msg: '', show: false });
+            const [editingModel, setEditingModel] = useState(null);
+            const [editingTool, setEditingTool] = useState(null);
+            const [chatMessages, setChatMessages] = useState([]);
+            const [chatInput, setChatInput] = useState('');
+            const [running, setRunning] = useState(false);
+            const [selectedModel, setSelectedModel] = useState('fake');
+            const [selectedModelName, setSelectedModelName] = useState('fake');
+            const [selectedApiKey, setSelectedApiKey] = useState('');
+            const [logs, setLogs] = useState([]);
+            const [logOpen, setLogOpen] = useState(false);
+            const chatEndRef = useRef(null);
+            const logEndRef = useRef(null);
+
+            const showToast = useCallback((msg) => {
+                setToast({ msg, show: true });
+                setTimeout(() => setToast({ msg: '', show: false }), 2500);
+            }, []);
+
+            // Load data
+            useEffect(() => {
+                api('/models').then(setModels).catch(() => {});
+                api('/tools').then(t => { setTools(t); setToolEnabled({}); }).catch(() => {});
+                api('/prompt').then(d => setPrompt(d.content)).catch(() => {});
+            }, []);
+
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [chatMessages]);
+
+            useEffect(() => {
+                logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [logs]);
+
+            // ==================== MODEL CRUD ====================
+            const saveModel = useCallback(async (m) => {
+                try {
+                    await api('/models', { method: 'POST', body: JSON.stringify(m) });
+                    const updated = await api('/models');
+                    setModels(updated);
+                    setEditingModel(null);
+                    showToast('✅ 模型已保存');
+                } catch (err) {
+                    showToast('❌ ' + err.message);
+                }
+            }, [showToast]);
+
+            const deleteModel = useCallback(async (name) => {
+                try {
+                    await api(`/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    const updated = await api('/models');
+                    setModels(updated);
+                    if (selectedModel === name) {
+                        setSelectedModel('fake');
+                        setSelectedApiKey('');
+                    }
+                    showToast('🗑️ 模型已删除');
+                } catch (err) {
+                    showToast('❌ ' + err.message);
+                }
+            }, [showToast, selectedModel]);
+
+            // ==================== TOOL CRUD ====================
+            const saveTool = useCallback(async (t) => {
+                try {
+                    await api('/tools', { method: 'POST', body: JSON.stringify(t) });
+                    const updated = await api('/tools');
+                    setTools(updated);
+                    setToolEnabled({});
+                    setEditingTool(null);
+                    showToast('✅ 工具已保存');
+                } catch (err) {
+                    showToast('❌ ' + err.message);
+                }
+            }, [showToast]);
+
+            const deleteTool = useCallback(async (name) => {
+                try {
+                    await api(`/tools/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    const updated = await api('/tools');
+                    setTools(updated);
+                    setToolEnabled({});
+                    showToast('🗑️ 工具已删除');
+                } catch (err) {
+                    showToast('❌ ' + err.message);
+                }
+            }, [showToast]);
+
+            // ==================== PROMPT ====================
+            const savePrompt = useCallback(async () => {
+                try {
+                    await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) });
+                    showToast('✅ 提示词已保存');
+                } catch (err) {
+                    showToast('❌ ' + err.message);
+                }
+            }, [prompt, showToast]);
+
+            // ==================== RUN ====================
+            const runAgent = useCallback(async () => {
+                if (!chatInput.trim()) return;
+                const userMsg = { role: 'user', content: chatInput };
+                setChatMessages(prev => [...prev, userMsg]);
+                setChatInput('');
+                setRunning(true);
+                setLogs([]);
+
+                try {
+                    const result = await api('/run', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            model_name: selectedModel,
+                            api_key: selectedApiKey,
+                            system_prompt: prompt,
+                            tools: selectedTools,
+                            max_iterations: 10,
+                            input: userMsg.content,
+                        }),
+                    });
+
+                    if (result.logs) setLogs(result.logs);
+
+                    // Skip first message from API (it's the user message already added)
+                    const apiMsgs = (result.messages || []);
+                    const newMsgs = apiMsgs.filter((m, i) => !(i === 0 && m.role === 'user')).map(m => ({
+                        role: m.role,
+                        content: m.content,
+                        name: m.name,
+                    }));
+                    setChatMessages(prev => [...prev, ...newMsgs]);
+                } catch (err) {
+                    // Try to fetch logs even on error
+                    try { const lr = await api('/logs'); setLogs(lr.logs || []); } catch {}
+                    setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ 错误: ${err.message}` }]);
+                }
+                setRunning(false);
+            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools]);
+
+            const handleKeyDown = useCallback((e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    runAgent();
+                }
+            }, [runAgent]);
+
+            // ==================== SELECT MODEL ====================
+            const selectModel = useCallback((name) => {
+                setSelectedModelName(name);
+                if (name === 'fake') {
+                    setSelectedModel('fake');
+                    setSelectedApiKey('');
+                } else {
+                    const m = models[name];
+                    if (m) {
+                        setSelectedModel(m.model_name);
+                        setSelectedApiKey(m.api_key || '');
+                    }
+                }
+            }, [models]);
+
+            const toggleTool = useCallback((toolName) => {
+                setToolEnabled(prev => ({ ...prev, [toolName]: !prev[toolName] }));
+            }, []);
+
+            // Compute selected tools (only enabled ones)
+            const selectedTools = Object.entries(tools)
+                .filter(([name]) => toolEnabled[name])
+                .map(([name, t]) => {
+                    const tool = {
+                        name: t.name,
+                        description: t.description,
+                        parameters: t.parameters_schema || t.parameters,
+                    };
+                    if (t.url) {
+                        tool.url = t.url;
+                        tool.method = t.method || 'GET';
+                        tool.headers = t.headers || {};
+                    }
+                    return tool;
+                });
+
+            const activeToolCount = selectedTools.length;
+
+            // ==================== RENDER ====================
+            const modelList = Object.values(models);
+            const toolList = Object.values(tools);
+
+            return (
+                <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+                    <header className="header">
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <h1>🤖 LangGraph Agent</h1>
+                            <span className="header-subtitle">配置 · 管理 · 运行</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px' }}>
+                            <span style={{ color: selectedModel === 'fake' ? '#4a6a8a' : '#7c4dff' }}>
+                                模型: {selectedModel === 'fake' ? '本地模拟' : selectedModelName || selectedModel}
+                            </span>
+                            {activeToolCount > 0 && (
+                                <span className="status-badge">{activeToolCount} 个工具</span>
+                            )}
+                            <button className="btn btn-sm" style={{ background: logOpen ? '#7c4dff' : '#2a2a4a', color: '#e0e0e0', marginLeft: '4px' }}
+                                onClick={() => setLogOpen(!logOpen)}>
+                                📋 日志
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="layout">
+                        {/* Sidebar */}
+                        <div className="sidebar">
+                            <div className="sidebar-tabs">
+                                <div className={`sidebar-tab ${tab === 'models' ? 'active' : ''}`} onClick={() => setTab('models')}>
+                                    <span className="icon">🧠</span> 模型
+                                </div>
+                                <div className={`sidebar-tab ${tab === 'tools' ? 'active' : ''}`} onClick={() => setTab('tools')}>
+                                    <span className="icon">🔧</span> 工具
+                                </div>
+                                <div className={`sidebar-tab ${tab === 'prompt' ? 'active' : ''}`} onClick={() => setTab('prompt')}>
+                                    <span className="icon">📝</span> 提示词
+                                </div>
+                            </div>
+
+                            <div className="sidebar-content">
+                                {/* === MODELS TAB === */}
+                                {tab === 'models' && (
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <span style={{ fontSize: '12px', color: '#8a9aaa' }}>大模型配置</span>
+                                            <button className="btn btn-primary btn-sm" onClick={() => setEditingModel({ name: '', model_name: 'deepseek-v4-flash', api_key: '', temperature: 0.7, max_tokens: 4096, _existing: false })}>+ 新增</button>
+                                        </div>
+
+                                        {/* Built-in fake model */}
+                                        <div className={`config-item ${selectedModel === 'fake' ? 'selected' : ''}`}
+                                            onClick={() => selectModel('fake')}>
+                                            <div className="config-item-header">
+                                                <span className="config-item-name">🖥️ 本地模拟</span>
+                                                <span style={{ fontSize: '10px', color: '#4a6a8a' }}>内置</span>
+                                            </div>
+                                            <div className="config-item-desc">无需 API Key，模拟工具调用</div>
+                                        </div>
+
+                                        {modelList.length === 0 && (
+                                            <div className="empty-state">
+                                                <div className="big-icon">🧠</div>
+                                                <div>暂无模型配置</div>
+                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加 DeepSeek 模型</div>
+                                            </div>
+                                        )}
+
+                                        {modelList.map(m => (
+                                            <div key={m.name} className={`config-item ${selectedModelName === m.name ? 'selected' : ''}`}>
+                                                <div className="config-item-header">
+                                                    <div style={{ flex: 1 }} onClick={() => selectModel(m.name)}>
+                                                        <span className="config-item-name">{m.name}</span>
+                                                        <div className="config-item-desc">{m.model_name}</div>
+                                                    </div>
+                                                    <div className="config-item-actions">
+                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                            onClick={(e) => { e.stopPropagation(); setEditingModel({ ...m, _existing: true }); }}>编辑</button>
+                                                        <button className="btn btn-sm btn-danger"
+                                                            onClick={(e) => { e.stopPropagation(); deleteModel(m.name); }}>删除</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {editingModel && (
+                                            <div className="config-detail">
+                                                <div className="config-detail-title">{editingModel.name ? '编辑模型' : '新增模型'}</div>
+                                                <div className="form-group">
+                                                    <label>名称</label>
+                                                    <input className="form-control" value={editingModel.name}
+                                                        onChange={e => setEditingModel({ ...editingModel, name: e.target.value })}
+                                                        placeholder="例如: deepseek-1" disabled={editingModel._existing} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>模型</label>
+                                                    <select className="form-control" value={editingModel.model_name}
+                                                        onChange={e => setEditingModel({ ...editingModel, model_name: e.target.value })}>
+                                                        <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                                                        <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                                                    </select>
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>API Key</label>
+                                                    <input className="form-control" type="password" value={editingModel.api_key}
+                                                        onChange={e => setEditingModel({ ...editingModel, api_key: e.target.value })}
+                                                        placeholder="sk-xxxxxxxxxxxxxxxx" />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Temperature ({editingModel.temperature})</label>
+                                                    <input className="form-control" type="range" min="0" max="2" step="0.1"
+                                                        value={editingModel.temperature}
+                                                        onChange={e => setEditingModel({ ...editingModel, temperature: parseFloat(e.target.value) })} />
+                                                </div>
+                                                <div className="btn-group">
+                                                    <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#b0c0d0' }}
+                                                        onClick={() => setEditingModel(null)}>取消</button>
+                                                    <button className="btn btn-primary btn-sm"
+                                                        onClick={() => saveModel(editingModel)} disabled={!editingModel.name}>保存</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* === TOOLS TAB === */}
+                                {tab === 'tools' && (
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <span style={{ fontSize: '12px', color: '#8a9aaa' }}>工具配置</span>
+                                            <button className="btn btn-primary btn-sm"
+                                                onClick={() => setEditingTool({ name: '', description: '', url: '', method: 'GET', headers: {}, parameters: [{ name: 'query', type: 'string', description: '', required: true }], _existing: false })}>
+                                                + 新增</button>
+                                        </div>
+
+                                        {toolList.length === 0 && (
+                                            <div className="empty-state">
+                                                <div className="big-icon">🔧</div>
+                                                <div>暂无工具配置</div>
+                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加工具</div>
+                                            </div>
+                                        )}
+
+                                        {toolList.map(t => {
+                                            const isOn = !!toolEnabled[t.name];
+                                            return (
+                                            <div key={t.name} className={`config-item ${isOn ? 'selected' : ''}`}>
+                                                <div className="config-item-header">
+                                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div onClick={() => toggleTool(t.name)}
+                                                            style={{ width: '32px', height: '18px', borderRadius: '9px', background: isOn ? '#7c4dff' : '#3a3a5a', position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
+                                                            <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: 'white', position: 'absolute', top: '2px', left: isOn ? '16px' : '2px', transition: 'all 0.2s' }} />
+                                                        </div>
+                                                        <div>
+                                                            <span className="config-item-name">{t.name}</span>
+                                                            <div className="config-item-desc">{t.description || '无描述'}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="config-item-actions">
+                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                            onClick={(e) => { e.stopPropagation(); setEditingTool({ ...t, _existing: true }); }}>编辑</button>
+                                                        <button className="btn btn-sm btn-danger"
+                                                            onClick={(e) => { e.stopPropagation(); deleteTool(t.name); }}>删除</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            );
+                                        })}
+
+                                        {editingTool && (
+                                            <div className="config-detail">
+                                                <div className="config-detail-title">{editingTool.name ? '编辑工具' : '新增工具'}</div>
+                                                <div className="form-group">
+                                                    <label>工具名称</label>
+                                                    <input className="form-control" value={editingTool.name}
+                                                        onChange={e => setEditingTool({ ...editingTool, name: e.target.value })}
+                                                        placeholder="例如: get_weather" disabled={editingTool._existing} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>描述</label>
+                                                    <textarea className="form-control" rows={2} value={editingTool.description}
+                                                        onChange={e => setEditingTool({ ...editingTool, description: e.target.value })}
+                                                        placeholder="工具功能描述，LLM 据此判断何时调用" />
+                                                </div>
+
+                                                {/* API Endpoint */}
+                                                <div style={{ marginTop: '8px', marginBottom: '8px', padding: '8px', background: '#0f1a2a', borderRadius: '6px' }}>
+                                                    <div style={{ fontSize: '11px', color: '#8a9aaa', marginBottom: '6px' }}>API 接口配置（留空则使用内置模拟）</div>
+                                                    <div className="form-group">
+                                                        <label>接口地址 (URL)</label>
+                                                        <input className="form-control" value={editingTool.url || ''}
+                                                            onChange={e => setEditingTool({ ...editingTool, url: e.target.value })}
+                                                            placeholder="例如: https://api.example.com/weather" />
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <div className="form-group" style={{ flex: '0 0 100px' }}>
+                                                            <label>请求方式</label>
+                                                            <select className="form-control" value={editingTool.method || 'GET'}
+                                                                onChange={e => setEditingTool({ ...editingTool, method: e.target.value })}>
+                                                                <option value="GET">GET</option>
+                                                                <option value="POST">POST</option>
+                                                                <option value="PUT">PUT</option>
+                                                                <option value="DELETE">DELETE</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="form-group" style={{ flex: 1 }}>
+                                                            <label>Headers (JSON 格式)</label>
+                                                            <input className="form-control" value={editingTool.headers ? (typeof editingTool.headers === 'string' ? editingTool.headers : JSON.stringify(editingTool.headers)) : ''}
+                                                                onChange={e => {
+                                                                    let h = e.target.value;
+                                                                    try { h = JSON.parse(h); } catch { }
+                                                                    setEditingTool({ ...editingTool, headers: h });
+                                                                }}
+                                                                placeholder='{"Authorization": "Bearer xxx"}' />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ marginTop: '10px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#8a9aaa', marginBottom: '6px' }}>
+                                                        <span>请求参数</span>
+                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                            onClick={() => setEditingTool({
+                                                                ...editingTool,
+                                                                parameters: [...editingTool.parameters, { name: '', type: 'string', description: '', required: false }]
+                                                            })}>+ 添加参数</button>
+                                                    </div>
+                                                    <div className="params-header">
+                                                        <span className="pn">名称</span>
+                                                        <span className="pt">类型</span>
+                                                        <span className="pd">描述</span>
+                                                        <span className="pr">必填</span>
+                                                    </div>
+                                                    {editingTool.parameters.map((p, idx) => (
+                                                        <div key={idx} className="param-row">
+                                                            <input className="param-name" value={p.name}
+                                                                onChange={e => {
+                                                                    const params = [...editingTool.parameters];
+                                                                    params[idx] = { ...params[idx], name: e.target.value };
+                                                                    setEditingTool({ ...editingTool, parameters: params });
+                                                                }} placeholder="参数名" />
+                                                            <select className="param-type" value={p.type}
+                                                                onChange={e => {
+                                                                    const params = [...editingTool.parameters];
+                                                                    params[idx] = { ...params[idx], type: e.target.value };
+                                                                    setEditingTool({ ...editingTool, parameters: params });
+                                                                }}>
+                                                                <option value="string">string</option>
+                                                                <option value="number">number</option>
+                                                                <option value="boolean">boolean</option>
+                                                                <option value="array">array</option>
+                                                            </select>
+                                                            <input className="param-desc" value={p.description}
+                                                                onChange={e => {
+                                                                    const params = [...editingTool.parameters];
+                                                                    params[idx] = { ...params[idx], description: e.target.value };
+                                                                    setEditingTool({ ...editingTool, parameters: params });
+                                                                }} placeholder="描述" />
+                                                            <label className="param-req" style={{ cursor: 'pointer', fontSize: '11px' }}>
+                                                                <input type="checkbox" checked={p.required}
+                                                                    onChange={e => {
+                                                                        const params = [...editingTool.parameters];
+                                                                        params[idx] = { ...params[idx], required: e.target.checked };
+                                                                        setEditingTool({ ...editingTool, parameters: params });
+                                                                    }} />
+                                                            </label>
+                                                            {editingTool.parameters.length > 1 && (
+                                                                <button style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}
+                                                                    onClick={() => {
+                                                                        const params = editingTool.parameters.filter((_, i) => i !== idx);
+                                                                        setEditingTool({ ...editingTool, parameters: params });
+                                                                    }}>×</button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Preview of tools JSON */}
+                                                <div style={{ marginTop: '8px', padding: '8px', background: '#0a0a1a', borderRadius: '4px', fontSize: '10px', color: '#6a8aaa', maxHeight: '140px', overflow: 'auto', fontFamily: 'monospace' }}>
+                                                    <div>tools 结构预览{editingTool.url ? ' (HTTP工具)' : ' (本地工具)'}:</div>
+                                                    {JSON.stringify({
+                                                        name: editingTool.name || 'example_tool',
+                                                        description: editingTool.description || '...',
+                                                        url: editingTool.url || '(本地执行)',
+                                                        method: editingTool.method || 'GET',
+                                                        parameters: {
+                                                            type: 'object',
+                                                            properties: Object.fromEntries(editingTool.parameters.map(p => [p.name || 'param', { type: p.type, description: p.description }])),
+                                                            required: editingTool.parameters.filter(p => p.required).map(p => p.name),
+                                                        }
+                                                    }, null, 2)}
+                                                </div>
+
+                                                <div className="btn-group">
+                                                    <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#b0c0d0' }}
+                                                        onClick={() => setEditingTool(null)}>取消</button>
+                                                    <button className="btn btn-primary btn-sm"
+                                                        onClick={() => saveTool(editingTool)} disabled={!editingTool.name}>保存</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* === PROMPT TAB === */}
+                                {tab === 'prompt' && (
+                                    <div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                            <span style={{ fontSize: '12px', color: '#8a9aaa' }}>系统提示词</span>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <textarea className="form-control" rows={16}
+                                                value={prompt}
+                                                onChange={e => setPrompt(e.target.value)}
+                                                placeholder="你是一个有用的AI助手。"
+                                                style={{ fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6' }} />
+                                        </div>
+
+                                        <div className="btn-group">
+                                            <button className="btn btn-primary" onClick={savePrompt}>💾 保存提示词</button>
+                                        </div>
+
+                                        <div style={{ marginTop: '12px', padding: '10px', background: '#0f1a2a', borderRadius: '6px', fontSize: '11px', color: '#6a8aaa', lineHeight: '1.8' }}>
+                                            <strong>提示词建议:</strong><br />
+                                            • 明确角色：你是一个医疗AI助手<br />
+                                            • 说明能力：你可以使用搜索、计算等工具<br />
+                                            • 规定行为：每次回答前先分析需要什么工具<br />
+                                            • 限制范围：只回答医疗相关的问题<br />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Chat Area */}
+                        <div className="chat-area">
+                            <div className="chat-messages">
+                                {chatMessages.length === 0 && (
+                                    <div className="welcome">
+                                        <h2>🤖 LangGraph Agent</h2>
+                                        <p>
+                                            配置好左侧的模型、工具和提示词<br />
+                                            在下方输入问题开始对话<br /><br />
+                                            <span style={{ fontSize: '11px', color: '#3a4a6a' }}>
+                                                当前: {selectedModel === 'fake' ? '本地模拟模式' : selectedModel}
+                                                {activeToolCount > 0 ? ` · ${activeToolCount} 个工具` : ''}
+                                            </span>
+                                        </p>
+                                    </div>
+                                )}
+                                {chatMessages.map((msg, i) => (
+                                    <div key={i} className={`msg ${msg.role === 'user' ? 'user' : msg.role === 'tool' ? 'tool' : 'assistant'}`}>
+                                        <div className="msg-label">
+                                            {msg.role === 'user' ? '你' : msg.role === 'tool' ? `工具 (${msg.name || ''})` : 'AI'}
+                                        </div>
+                                        <div className="msg-bubble">{msg.content}</div>
+                                    </div>
+                                ))}
+                                <div ref={chatEndRef} />
+                            </div>
+
+                            <div className="chat-input-area">
+                                <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '11px', color: '#5a7a9a' }}>模型:</span>
+                                    <select style={{ padding: '4px 8px', border: '1px solid #2a3a5a', borderRadius: '4px', background: '#1a1a3e', color: '#e0e0e0', fontSize: '11px', cursor: 'pointer' }}
+                                        value={selectedModelName}
+                                        onChange={e => selectModel(e.target.value)}>
+                                        <option value="fake">本地模拟</option>
+                                        {modelList.map(m => (
+                                            <option key={m.name} value={m.name}>{m.name} ({m.model_name})</option>
+                                        ))}
+                                    </select>
+                                    <span style={{ fontSize: '11px', color: '#5a7a9a', marginLeft: '8px' }}>工具:</span>
+                                    {activeToolCount === 0
+                                        ? <span style={{ fontSize: '10px', color: '#4a5a7a' }}>未开启</span>
+                                        : Object.entries(tools).filter(([name]) => toolEnabled[name]).map(([name]) => (
+                                            <span key={name} style={{ fontSize: '11px', padding: '2px 8px', background: '#2a1a5e', borderRadius: '4px', color: '#7c4dff' }}>{name}</span>
+                                        ))
+                                    }
+                                </div>
+                                <div className="chat-input-row">
+                                    <textarea
+                                        value={chatInput}
+                                        onChange={e => setChatInput(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={running ? '运行中...' : '输入你的问题... (Enter 发送, Shift+Enter 换行)'}
+                                        disabled={running}
+                                        rows={2}
+                                    />
+                                    <button className="chat-run-btn" onClick={runAgent} disabled={running || !chatInput.trim()}>
+                                        {running ? '⏳ 运行中' : '▶ 运行'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Log Drawer */}
+                    {logOpen && (
+                        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px', background: '#0f1a2a', borderLeft: '1px solid #2a3a5a', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 20px rgba(0,0,0,0.5)' }}>
+                            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a3a5a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 600, fontSize: '14px' }}>📋 执行日志</span>
+                                <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#e0e0e0' }}
+                                    onClick={() => setLogOpen(false)}>✕ 关闭</button>
+                            </div>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.8' }}>
+                                {logs.length === 0 && (
+                                    <div style={{ color: '#4a5a7a', textAlign: 'center', padding: '30px 0' }}>
+                                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>📭</div>
+                                        <div>暂无日志</div>
+                                        <div style={{ fontSize: '11px', marginTop: '4px' }}>运行 Agent 后将显示详细执行步骤</div>
+                                    </div>
+                                )}
+                                {logs.map((log, i) => (
+                                    <div key={i} style={{
+                                        padding: '6px 8px', marginBottom: '4px', borderRadius: '4px',
+                                        background: log.level === 'error' ? '#3a1a1a' : '#1a1a3e',
+                                        borderLeft: `3px solid ${log.level === 'error' ? '#c62828' : log.step.includes('失败') ? '#c62828' : '#7c4dff'}`,
+                                    }}>
+                                        <div style={{ display: 'flex', gap: '8px', color: '#6a8aaa', fontSize: '10px' }}>
+                                            <span>{log.timestamp || ''}</span>
+                                            <span style={{ color: log.level === 'error' ? '#ef5350' : '#7c4dff' }}>{log.step}</span>
+                                        </div>
+                                        <div style={{ color: log.level === 'error' ? '#ef9a9a' : '#b0c0d0', fontSize: '11px', marginTop: '2px', wordBreak: 'break-all' }}>{log.detail}</div>
+                                    </div>
+                                ))}
+                                <div ref={logEndRef} />
+                            </div>
+                        </div>
+                    )}
+
+                    <Toast msg={toast.msg} show={toast.show} />
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    </script>
+</body>
+</html>

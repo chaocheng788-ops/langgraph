@@ -1,0 +1,21 @@
+{
+  "node_version": "20",
+  "dependencies": ["."],
+  "graphs": {
+    "workflow": "./app/graph.py:build_workflow"
+  },
+  "env": ".env",
+  "python_version": "3.14",
+  "pip_dependencies": [
+    "langgraph",
+    "langgraph-cli",
+    "langgraph-sdk",
+    "fastapi",
+    "uvicorn",
+    "pyyaml",
+    "jinja2",
+    "pydantic",
+    "python-multipart",
+    "sse-starlette"
+  ]
+}
