@@ -5,15 +5,31 @@ Uses LangGraph's built-in ReAct agent pattern instead of hand-written loops.
 from typing import Any, Dict, List, Optional, Sequence
 import json
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.messages import BaseMessage
+from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from typing_extensions import TypedDict
 from typing import Annotated
+
+# ── Checkpointer 单例 ──
+_checkpointer: Optional[AsyncSqliteSaver] = None
+
+async def get_checkpointer(db_path: str = "") -> AsyncSqliteSaver:
+    """获取全局唯一的 AsyncSqliteSaver 实例。"""
+    global _checkpointer
+    if _checkpointer is None:
+        import aiosqlite
+        if not db_path:
+            from pathlib import Path
+            Path(Path(__file__).parent.parent / "data").mkdir(exist_ok=True)
+            db_path = str(Path(__file__).parent.parent / "data" / "checkpoints.db")
+        conn = await aiosqlite.connect(db_path)
+        _checkpointer = AsyncSqliteSaver(conn)
+        add_log("Checkpointer", f"AsyncSQLite 已连接: {db_path}")
+    return _checkpointer
 
 
 # Global execution log accumulator
@@ -32,6 +48,99 @@ def add_log(step: str, detail: str, level: str = "info"):
         "level": level,
         "timestamp": __import__("datetime").datetime.now().strftime("%H:%M:%S.%f")[:-3],
     })
+
+
+# ============================================================
+# LLM 请求/响应日志回调
+# ============================================================
+
+class LoggingCallbackHandler(BaseCallbackHandler):
+    """记录每次调用 LLM 的原始入参和原始返回。"""
+
+    def on_chat_model_start(
+        self, serialized: dict, messages: list, **kwargs: Any
+    ) -> None:
+        # 提取 tools / tool_choice / temperature 等 API 级参数
+        inv_params = kwargs.get("invocation_params", {})
+        model = inv_params.get("model", inv_params.get("model_name", "?"))
+
+        # messages 是 List[List[BaseMessage]]，每个内层列表是一个对话
+        for pi, msg_list in enumerate(messages):
+            msgs_json = []
+            for msg in msg_list:
+                entry = {}
+                role = getattr(msg, "type", "?")
+                entry["role"] = role
+                entry["content"] = getattr(msg, "content", "")
+                for attr in ("tool_calls", "tool_call_id", "name"):
+                    val = getattr(msg, attr, None)
+                    if val is not None:
+                        entry[attr] = val
+                add_kw = getattr(msg, "additional_kwargs", {})
+                if add_kw:
+                    entry["additional_kwargs"] = add_kw
+                msgs_json.append(entry)
+
+            # 构造完整 HTTP 请求体
+            request_body = {
+                "model": model,
+                "temperature": inv_params.get("temperature", 0.7),
+                "messages": msgs_json,
+                "tools": inv_params.get("tools", None),
+                "tool_choice": inv_params.get("tool_choice", None),
+            }
+            request_body = {k: v for k, v in request_body.items() if v is not None}
+
+            add_log(f"🔵 模型请求 #{pi+1}",
+                json.dumps(request_body, ensure_ascii=False, indent=2, default=str)[:5000])
+
+    def on_llm_end(self, response: Any, **kwargs: Any) -> None:
+        for i, gen_list in enumerate(response.generations):
+            for j, gen in enumerate(gen_list):
+                msg = gen.message if hasattr(gen, "message") else str(gen)
+                # 序列化 AIMessage 为可读格式
+                raw = {
+                    "content": getattr(msg, "content", ""),
+                    "tool_calls": getattr(msg, "tool_calls", None),
+                    "additional_kwargs": getattr(msg, "additional_kwargs", {}),
+                }
+                raw_str = json.dumps(raw, ensure_ascii=False, indent=2, default=str)
+                add_log(f"🟢 模型响应 #{i+1}.{j+1}", f"原始返回:\n{raw_str[:3000]}")
+
+                # ── 思考链展示 ──
+                # 1. 如果有 reasoning_content（DeepSeek-R1），单独展示
+                add_kw = raw.get("additional_kwargs", {})
+                reasoning = add_kw.get("reasoning_content", "")
+                if reasoning:
+                    add_log("💭 思考链 (R1)", str(reasoning)[:2000])
+
+                # 2. 如果有 tool_calls，展示模型决策
+                tool_calls = raw.get("tool_calls")
+                if tool_calls:
+                    for tc in tool_calls:
+                        tc_name = tc.get("name", "?")
+                        tc_args = tc.get("args", {})
+                        add_log("💭 模型决策", f"调用工具: {tc_name}\n参数: {json.dumps(tc_args, ensure_ascii=False)}")
+                elif raw.get("content"):
+                    # 有内容无工具调用 = 最终回答
+                    add_log("💭 模型决策", "直接回答，不调用工具")
+
+    def on_llm_error(self, error: Any, **kwargs: Any) -> None:
+        add_log("🔴 模型错误", str(error)[:1000], "error")
+
+    def on_tool_start(
+        self, serialized: dict, input_str: str, **kwargs: Any
+    ) -> None:
+        """工具开始执行。"""
+        tool_name = serialized.get("name", "?")
+        add_log(f"🔧 工具调用", f"工具: {tool_name}\n入参: {input_str[:500]}")
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        """工具执行完毕。"""
+        add_log(f"🔧 工具返回", str(output)[:2000])
+
+    def on_tool_error(self, error: Any, **kwargs: Any) -> None:
+        add_log("🔧 工具错误", str(error)[:1000], "error")
 
 
 # ============================================================
@@ -77,6 +186,43 @@ def analyze_sentiment(text: str) -> str:
     """Analyze the sentiment of a piece of text."""
     return f"[情感分析] 文本: {text[:40]}...\n情感倾向: 积极 (模拟分析)"
 
+def get_weather(city: str) -> str:
+    """传入城市名字可查天气，如北京，传入北京"""
+    import random
+    cities = {
+        "北京": {"temp": 25, "humidity": 45, "wind": "东北风 3级", "desc": "晴"},
+        "上海": {"temp": 28, "humidity": 70, "wind": "东南风 4级", "desc": "多云转小雨"},
+        "广州": {"temp": 32, "humidity": 80, "wind": "南风 2级", "desc": "雷阵雨"},
+        "深圳": {"temp": 30, "humidity": 75, "wind": "西南风 3级", "desc": "多云"},
+        "杭州": {"temp": 26, "humidity": 60, "wind": "东风 2级", "desc": "阴"},
+        "成都": {"temp": 24, "humidity": 55, "wind": "北风 1级", "desc": "小雨"},
+        "武汉": {"temp": 29, "humidity": 65, "wind": "南风 3级", "desc": "晴转多云"},
+        "西安": {"temp": 27, "humidity": 40, "wind": "西风 2级", "desc": "晴"},
+    }
+    city_key = city.strip()
+    if city_key in cities:
+        w = cities[city_key]
+        return (
+            f"[天气] {city_key} 当前天气:\n"
+            f"- 温度: {w['temp']}°C\n"
+            f"- 湿度: {w['humidity']}%\n"
+            f"- 风力: {w['wind']}\n"
+            f"- 天气: {w['desc']}\n"
+            f"- 建议: {'带伞' if '雨' in w['desc'] else '适宜出行'}"
+        )
+    else:
+        temp = random.randint(15, 35)
+        humidity = random.randint(30, 90)
+        descs = ["晴", "多云", "阴", "小雨", "阵雨"]
+        return (
+            f"[天气] {city_key} 当前天气:\n"
+            f"- 温度: {temp}°C\n"
+            f"- 湿度: {humidity}%\n"
+            f"- 风力: 微风 2级\n"
+            f"- 天气: {random.choice(descs)}\n"
+            f"- 提示: 该城市为模拟数据"
+        )
+
 
 # Registry of built-in tools
 BUILTIN_TOOLS = {
@@ -85,6 +231,7 @@ BUILTIN_TOOLS = {
     "summarize": summarize,
     "translate": translate,
     "sentiment": analyze_sentiment,
+    "weather": get_weather,
 }
 
 
@@ -167,149 +314,61 @@ def get_tools_from_config(tools_config: List[Dict[str, Any]]) -> list:
     return tools
 
 
-# ============================================================
-# FakeChatModel — simulates LLM without needing API keys
-# ============================================================
-
-class FakeChatModel(BaseChatModel):
-    """A simulated ChatModel that works with create_react_agent.
-    No API key required. Simulates tool-calling behavior."""
-    
-    model_name: str = "fake-model"
-    system_prompt: str = "你是一个有用的AI助手。"
-    tool_names: List[str] = []
-    max_rounds: int = 3
-
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: Optional[list[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        # Count tool results so far
-        tool_result_count = sum(1 for m in messages if isinstance(m, ToolMessage))
-        total_tools = len(self.tool_names)
-        last_content = messages[-1].content if messages else ""
-
-        # Decide: should we call a tool or give the final answer?
-        if tool_result_count < total_tools and tool_result_count < self.max_rounds:
-            # Call the next tool in sequence
-            tool_idx = tool_result_count
-            tool_name = self.tool_names[tool_idx]
-
-            # Determine appropriate argument name based on tool
-            tool_args = {"query": last_content[:60]}
-            if tool_name in ("summarize", "translate", "sentiment"):
-                tool_args = {"text": last_content[:60]}
-            elif tool_name == "calculator":
-                tool_args = {"expr": "2+2"}
-
-            response = AIMessage(
-                content=f"我需要使用{tool_name}工具进行第{tool_idx + 1}/{total_tools}步分析。",
-                tool_calls=[{
-                    "name": tool_name,
-                    "args": tool_args,
-                    "id": f"call_{tool_idx + 1}",
-                    "type": "tool_call",
-                }],
-            )
-        else:
-            # All tools executed or max rounds reached — give final answer
-            tool_summary = f"已调用{total_tools}个工具" if total_tools > 0 else "未使用工具"
-            response = AIMessage(
-                content=(
-                    f"[最终回答] ({tool_summary})\n\n"
-                    f"用户问题: {messages[0].content[:50] if messages else ''}...\n\n"
-                    f"分析结论: 经过{tool_result_count}轮工具调用和综合分析，已完成处理。\n"
-                    f"{self.system_prompt}"
-                )
-            )
-
-        return ChatResult(generations=[ChatGeneration(message=response)])
-
-    @property
-    def _llm_type(self) -> str:
-        return "fake-chat-model"
-
-    def bind_tools(self, tools: list, **kwargs):
-        """Override bind_tools to capture tool names."""
-        self.tool_names = [t.name if hasattr(t, '__name__') else str(t) for t in tools]
-        # Also try getting name from __name__ attribute
-        self.tool_names = []
-        for t in tools:
-            if hasattr(t, 'name'):
-                self.tool_names.append(t.name)
-            elif hasattr(t, '__name__'):
-                self.tool_names.append(t.__name__)
-            else:
-                self.tool_names.append(str(t))
-        return self
-
-
-def create_agent_graph(
+async def create_agent_graph(
     system_prompt: str = "你是一个有用的AI助手。",
     tools_config: Optional[List[Dict[str, str]]] = None,
     max_iterations: int = 10,
     api_key: Optional[str] = None,
-    model_name: str = "fake",
+    model_name: str = "deepseek-chat",
+    base_url: str = "https://api.deepseek.com/v1",
 ) -> CompiledStateGraph:
     """
-    Create a ReAct agent graph using the official create_react_agent.
+    Create a ReAct agent graph using a remote LLM (DeepSeek / OpenAI-compatible).
 
     Args:
         system_prompt: The system prompt for the LLM.
         tools_config: List of tool configs from the frontend.
         max_iterations: Maximum number of LLM-tool rounds.
-        api_key: API key for remote model (DeepSeek / OpenAI-compatible).
-        model_name: "fake" for local simulation, or model name like
-                    "deepseek-chat", "deepseek-reasoner" for real API.
+        api_key: API key for the remote model (required).
+        model_name: Model name, e.g. "deepseek-chat", "deepseek-reasoner".
+        base_url: API base URL for OpenAI-compatible endpoints.
 
     Returns:
         A compiled LangGraph StateGraph.
+
+    Raises:
+        ValueError: If no api_key is provided.
+        ImportError: If langchain-openai is not installed.
     """
+    if not api_key:
+        raise ValueError("必须提供 api_key 才能使用远程模型")
+
     tools = get_tools_from_config(tools_config or [])
 
-    if api_key and model_name != "fake":
-        # ============================================================
-        # REAL REMOTE MODEL (DeepSeek / OpenAI-compatible)
-        # ============================================================
-        add_log("模型选择", f"使用远程模型: {model_name}, API Key: {api_key[:8]}...")
-        try:
-            from langchain_openai import ChatOpenAI
-            model = ChatOpenAI(
-                model=model_name,
-                api_key=api_key,
-                base_url="https://api.deepseek.com/v1",
-                temperature=0.7,
-            )
-            # Bind tools so the model knows what it can call
-            if tools:
-                tool_names = [t.__name__ for t in tools]
-                add_log("工具绑定", f"绑定 {len(tools)} 个工具: {tool_names}")
-                model = model.bind_tools(tools)
-            add_log("准备就绪", "远程模型初始化完成, 等待用户输入")
-        except ImportError:
-            add_log("依赖错误", "缺少 langchain-openai 包", "error")
-            raise ImportError("请先安装 langchain-openai: pip install langchain-openai")
-    else:
-        # ============================================================
-        # LOCAL SIMULATED MODEL (no API key needed)
-        # ============================================================
-        tool_names = [t.__name__ for t in tools]
-        add_log("模型选择", f"使用本地模拟模型, 工具: {tool_names}")
-        model = FakeChatModel(
-            model_name="fake-gpt",
-            system_prompt=system_prompt,
-            tool_names=tool_names,
-            max_rounds=min(max_iterations, 5),
+    add_log("模型选择", f"使用远程模型: {model_name}, API Key: {api_key[:8]}...")
+    try:
+        from langchain_openai import ChatOpenAI
+        model = ChatOpenAI(
+            model=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0.7,
         )
+        if tools:
+            tool_names = [t.__name__ for t in tools]
+            add_log("工具绑定", f"绑定 {len(tools)} 个工具: {tool_names}")
+            model = model.bind_tools(tools)
+        add_log("准备就绪", "远程模型初始化完成, 等待用户输入")
+    except ImportError:
+        add_log("依赖错误", "缺少 langchain-openai 包", "error")
+        raise ImportError("请先安装 langchain-openai: pip install langchain-openai")
 
     graph = create_react_agent(
         model,
         tools=tools,
         prompt=system_prompt,
         state_schema=AgentState,
+        checkpointer=await get_checkpointer(),
         version="v2",
     )
     return graph

@@ -9,107 +9,140 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; overflow: hidden; height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f4f8; color: #1a2332; overflow: hidden; height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         #root { height: 100vh; display: flex; flex-direction: column; }
 
-        .header { background: linear-gradient(135deg, #16213e 0%, #0f3460 100%); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a3a6a; flex-shrink: 0; }
-        .header h1 { font-size: 18px; font-weight: 600; background: linear-gradient(90deg, #4fc3f7, #81c784); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .header-subtitle { font-size: 11px; color: #4a6a8a; margin-left: 12px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 16px rgba(102,126,234,0.25); flex-shrink: 0; position: relative; z-index: 10; }
+        .header h1 { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: 0.5px; text-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+        .header-subtitle { font-size: 11px; color: rgba(255,255,255,0.75); margin-left: 12px; font-weight: 400; }
 
         .layout { display: flex; flex: 1; overflow: hidden; }
 
         /* Sidebar */
-        .sidebar { width: 340px; background: #16213e; border-right: 1px solid #1a3a6a; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
-        .sidebar-tabs { display: flex; border-bottom: 1px solid #1a3a6a; background: #0f1a30; }
-        .sidebar-tab { flex: 1; padding: 10px 8px; text-align: center; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; color: #6a8aaa; }
-        .sidebar-tab:hover { color: #b0c0d0; background: #1a2a4a; }
-        .sidebar-tab.active { color: #7c4dff; border-bottom-color: #7c4dff; background: #1a1a3e; }
+        .sidebar { width: 340px; background: #ffffff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; box-shadow: 2px 0 12px rgba(0,0,0,0.04); }
+        .sidebar-tabs { display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+        .sidebar-tab { flex: 1; padding: 11px 8px; text-align: center; font-size: 12px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; color: #64748b; font-weight: 500; }
+        .sidebar-tab:hover { color: #667eea; background: #f1f5f9; }
+        .sidebar-tab.active { color: #667eea; border-bottom-color: #667eea; background: #eef2ff; font-weight: 600; }
         .sidebar-tab .icon { margin-right: 4px; }
-        .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 14px; }
 
         /* Form elements */
         .form-group { margin-bottom: 10px; }
-        .form-group label { display: block; font-size: 11px; color: #8a9aaa; margin-bottom: 3px; font-weight: 500; }
-        .form-control { width: 100%; padding: 7px 10px; border: 1px solid #2a3a5a; border-radius: 5px; background: #1a1a3e; color: #e0e0e0; font-size: 13px; transition: border 0.2s; }
-        .form-control:focus { outline: none; border-color: #7c4dff; }
-        .form-control::placeholder { color: #4a5a7a; }
-        textarea.form-control { resize: vertical; font-family: inherit; min-height: 60px; }
+        .form-group label { display: block; font-size: 11px; color: #475569; margin-bottom: 4px; font-weight: 600; letter-spacing: 0.3px; }
+        .form-control { width: 100%; padding: 8px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #1e293b; font-size: 13px; transition: all 0.2s; outline: none; }
+        .form-control:focus { border-color: #667eea; background: #fff; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+        .form-control::placeholder { color: #94a3b8; }
+        textarea.form-control { resize: vertical; font-family: inherit; min-height: 60px; line-height: 1.5; }
         select.form-control { cursor: pointer; }
 
-        .btn { padding: 7px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
-        .btn-primary { background: linear-gradient(135deg, #7c4dff, #9c7dff); color: white; }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,77,255,0.3); }
-        .btn-danger { background: linear-gradient(135deg, #c62828, #ef5350); color: white; }
-        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(198,40,40,0.3); }
-        .btn-sm { padding: 4px 10px; font-size: 11px; }
-        .btn-success { background: linear-gradient(135deg, #2e7d32, #66bb6a); color: white; }
+        .btn { padding: 7px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; letter-spacing: 0.3px; }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; box-shadow: 0 2px 8px rgba(102,126,234,0.35); }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.45); }
+        .btn-danger { background: linear-gradient(135deg, #f43f5e, #e11d48); color: #fff; box-shadow: 0 2px 8px rgba(244,63,94,0.3); }
+        .btn-danger:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(244,63,94,0.4); }
+        .btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 6px; }
+        .btn-success { background: linear-gradient(135deg, #10b981, #059669); color: #fff; box-shadow: 0 2px 8px rgba(16,185,129,0.3); }
         .btn-group { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
 
         /* Config list items */
-        .config-item { padding: 10px 12px; background: #1a1a3e; border: 1px solid #2a2a5a; border-radius: 6px; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
-        .config-item:hover { border-color: #4a4a7a; background: #222250; }
-        .config-item.selected { border-color: #7c4dff; background: #2a1a5e; }
+        .config-item { padding: 12px 14px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: all 0.25s; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+        .config-item:hover { border-color: #a5b4fc; box-shadow: 0 4px 12px rgba(102,126,234,0.08); transform: translateY(-1px); }
+        .config-item.selected { border-color: #667eea; background: #eef2ff; box-shadow: 0 4px 16px rgba(102,126,234,0.15); }
         .config-item-header { display: flex; justify-content: space-between; align-items: center; }
-        .config-item-name { font-size: 13px; font-weight: 500; }
-        .config-item-desc { font-size: 11px; color: #6a8aaa; margin-top: 2px; }
+        .config-item-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+        .config-item-desc { font-size: 11px; color: #64748b; margin-top: 3px; }
         .config-item-actions { display: flex; gap: 4px; }
 
-        .empty-state { text-align: center; padding: 30px 20px; color: #4a5a7a; font-size: 13px; }
-        .empty-state .big-icon { font-size: 32px; margin-bottom: 8px; }
+        .empty-state { text-align: center; padding: 30px 20px; color: #94a3b8; font-size: 13px; }
+        .empty-state .big-icon { font-size: 36px; margin-bottom: 10px; }
 
         /* Parameter editor */
-        .param-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; padding: 6px 8px; background: #0f1a2a; border-radius: 4px; }
-        .param-row input, .param-row select { padding: 4px 6px; border: 1px solid #2a3a5a; border-radius: 3px; background: #1a1a3e; color: #e0e0e0; font-size: 11px; }
+        .param-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; padding: 6px 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+        .param-row input, .param-row select { padding: 5px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px; background: #fff; color: #1e293b; font-size: 11px; outline: none; }
+        .param-row input:focus, .param-row select:focus { border-color: #667eea; }
         .param-row .param-name { width: 90px; }
         .param-row .param-type { width: 70px; }
         .param-row .param-desc { flex: 1; }
         .param-row .param-req { width: 50px; text-align: center; }
 
         /* Main chat area */
-        .chat-area { flex: 1; display: flex; flex-direction: column; background: #1a1a2e; }
-        .chat-messages { flex: 1; overflow-y: auto; padding: 16px 20px; }
-        .chat-input-area { padding: 12px 20px; border-top: 1px solid #1a3a6a; background: #16213e; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #f8fafc; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px 28px; }
+        .chat-input-area { padding: 14px 28px; border-top: 1.5px solid #e2e8f0; background: #fff; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }
         .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
-        .chat-input-row textarea { flex: 1; padding: 10px 14px; border: 1px solid #2a3a5a; border-radius: 8px; background: #1a1a3e; color: #e0e0e0; font-size: 13px; resize: none; min-height: 44px; max-height: 120px; font-family: inherit; }
-        .chat-input-row textarea:focus { outline: none; border-color: #7c4dff; }
-        .chat-run-btn { padding: 10px 24px; border: none; border-radius: 8px; background: linear-gradient(135deg, #7c4dff, #9c7dff); color: white; font-size: 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-        .chat-run-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,77,255,0.4); }
-        .chat-run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .chat-input-row textarea { flex: 1; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 12px; background: #f8fafc; color: #1e293b; font-size: 14px; resize: none; min-height: 46px; max-height: 120px; font-family: inherit; outline: none; transition: all 0.25s; }
+        .chat-input-row textarea:focus { border-color: #667eea; background: #fff; box-shadow: 0 0 0 4px rgba(102,126,234,0.08); }
+        .chat-run-btn { padding: 12px 28px; border: none; border-radius: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.25s; white-space: nowrap; box-shadow: 0 4px 14px rgba(102,126,234,0.4); letter-spacing: 0.5px; }
+        .chat-run-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(102,126,234,0.5); }
+        .chat-run-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
         /* Messages */
-        .msg { margin-bottom: 12px; max-width: 85%; }
+        .msg { margin-bottom: 16px; max-width: 80%; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .msg.user { margin-left: auto; }
         .msg.assistant { margin-right: auto; }
-        .msg.tool { margin-right: auto; opacity: 0.8; }
-        .msg-bubble { padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-        .msg.user .msg-bubble { background: #7c4dff33; border: 1px solid #7c4dff44; }
-        .msg.assistant .msg-bubble { background: #1a2a4a; border: 1px solid #2a4a7a; }
-        .msg.tool .msg-bubble { background: #2a2a1a; border: 1px solid #5a5a2a; font-size: 12px; }
-        .msg-label { font-size: 10px; color: #5a7a9a; margin-bottom: 4px; }
+        .msg.tool { margin-right: auto; opacity: 0.85; }
+        .msg-bubble { padding: 12px 16px; border-radius: 14px; font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+        .msg.user .msg-bubble { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border-bottom-right-radius: 4px; box-shadow: 0 4px 14px rgba(102,126,234,0.3); }
+        .msg.assistant .msg-bubble { background: #fff; color: #1e293b; border: 1.5px solid #e2e8f0; border-bottom-left-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .msg.tool .msg-bubble { background: #fffbeb; border: 1.5px solid #fde68a; color: #92400e; font-size: 12px; border-radius: 10px; }
+        .msg.tool-start .msg-bubble { background: #eef2ff; border: 1.5px solid #a5b4fc; color: #4338ca; font-size: 12px; border-radius: 10px; font-weight: 500; }
+        .msg.thinking .msg-bubble { background: #f8fafc; border: 1.5px dashed #cbd5e1; color: #94a3b8; font-size: 12px; border-radius: 10px; font-style: italic; animation: pulse 1.5s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+        .msg-label { font-size: 10px; color: #64748b; margin-bottom: 5px; font-weight: 600; padding-left: 2px; }
 
-        .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #3a4a6a; text-align: center; }
-        .welcome h2 { font-size: 22px; margin-bottom: 8px; }
-        .welcome p { font-size: 13px; line-height: 1.8; }
+        .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #94a3b8; text-align: center; }
+        .welcome h2 { font-size: 24px; font-weight: 700; color: #475569; margin-bottom: 10px; }
+        .welcome p { font-size: 13px; line-height: 1.9; color: #64748b; }
 
         /* Scrollbar */
-        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         /* Toast */
-        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #323232; color: white; padding: 10px 20px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.3s; z-index: 200; }
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1e293b; color: #fff; padding: 10px 22px; border-radius: 10px; font-size: 13px; font-weight: 500; opacity: 0; transition: all 0.3s; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
         .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
         /* Config detail panel */
-        .config-detail { background: #0f1a2a; border-radius: 6px; padding: 12px; margin-top: 8px; }
-        .config-detail-title { font-size: 12px; color: #8a9aaa; margin-bottom: 8px; }
-        .params-header { display: flex; gap: 6px; font-size: 10px; color: #5a7a9a; padding: 4px 8px; }
+        .config-detail { background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-top: 8px; }
+        .config-detail-title { font-size: 12px; color: #475569; margin-bottom: 10px; font-weight: 600; }
+        .params-header { display: flex; gap: 6px; font-size: 10px; color: #94a3b8; padding: 4px 8px; font-weight: 600; }
         .params-header .pn { width: 90px; }
         .params-header .pt { width: 70px; }
         .params-header .pd { flex: 1; }
         .params-header .pr { width: 50px; text-align: center; }
 
-        .status-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; background: #2e7d32; color: white; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+
+        /* Conversation list */
+        .conv-list { display: flex; flex-direction: column; gap: 6px; }
+        .conv-item { padding: 10px 12px; background: #fff; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.2s; position: relative; }
+        .conv-item:hover { border-color: #a5b4fc; box-shadow: 0 2px 8px rgba(102,126,234,0.08); }
+        .conv-item.active { border-color: #667eea; background: #eef2ff; }
+        .conv-item-title { font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 24px; }
+        .conv-item.active .conv-item-title { color: #4338ca; }
+        .conv-item-meta { font-size: 10px; color: #94a3b8; display: flex; gap: 10px; }
+        .conv-item-delete { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 6px; border: none; background: transparent; color: #94a3b8; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity: 0; transition: all 0.2s; }
+        .conv-item:hover .conv-item-delete { opacity: 1; }
+        .conv-item-delete:hover { background: #fef2f2; color: #ef4444; }
+
+        /* History dropdown */
+        .history-dropdown { position: absolute; top: 100%; right: 0; margin-top: 8px; width: 340px; max-height: 420px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); z-index: 100; overflow: hidden; display: flex; flex-direction: column; }
+        .history-dropdown-header { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #1e293b; display: flex; justify-content: space-between; align-items: center; }
+        .history-dropdown-list { flex: 1; overflow-y: auto; padding: 8px; }
+
+        /* JSON 语法高亮 */
+        .log-detail { color: #334155; font-size: 11px; margin-top: 2px; word-break: break-all; white-space: pre-wrap; line-height: 1.6; }
+        .json-block { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 4px 0; overflow-x: auto; font-family: 'Consolas', 'Fira Code', 'Courier New', monospace; font-size: 11px; line-height: 1.6; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+        .json-key { color: #93c5fd; }
+        .json-string { color: #86efac; }
+        .json-number { color: #fda4af; }
+        .json-bool { color: #c4b5fd; }
+        .json-null { color: #94a3b8; }
+        .json-brace { color: #fde68a; }
 
         @media (max-width: 768px) {
             .sidebar { width: 280px; }
@@ -141,6 +174,93 @@
             return <div className={`toast ${show ? 'show' : ''}`}>{msg}</div>;
         }
 
+        // ==================== JSON 格式化渲染 ====================
+        function highlightJSON(jsonStr) {
+            // Escape HTML entities
+            return jsonStr
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                // Keys (quoted strings followed by colon)
+                .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:')
+                // String values
+                .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="json-string">$1</span>')
+                // Numbers
+                .replace(/:\s*(\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+                // true/false
+                .replace(/:\s*(true|false)/g, ': <span class="json-bool">$1</span>')
+                // null
+                .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
+                // Braces
+                .replace(/([\[\]{}])/g, '<span class="json-brace">$1</span>');
+        }
+
+        function LogDetail({ text }) {
+            // Try to detect and format JSON blocks
+            const parts = [];
+            const lines = text.split('\n');
+            let buffer = [];
+            let inJSON = false;
+            let braceDepth = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+
+                // Detect start of a real JSON block: [ or { followed by JSON-like content
+                if (!inJSON && (trimmed.startsWith('{') || (trimmed.startsWith('[') && /^\[\s*("|\{|\[|\d|true|false|null)/.test(trimmed)))) {
+                    if (buffer.length > 0) {
+                        parts.push({ type: 'text', content: buffer.join('\n') });
+                        buffer = [];
+                    }
+                    inJSON = true;
+                    braceDepth = 0;
+                }
+
+                if (inJSON) {
+                    buffer.push(line);
+                    for (const ch of trimmed) {
+                        if (ch === '{' || ch === '[') braceDepth++;
+                        if (ch === '}' || ch === ']') braceDepth--;
+                    }
+                    // JSON block ends when braces balance and we're past the opening
+                    if (braceDepth === 0 && buffer.length > 1) {
+                        const jsonStr = buffer.join('\n');
+                        try {
+                            const parsed = JSON.parse(jsonStr);
+                            const pretty = JSON.stringify(parsed, null, 2);
+                            parts.push({ type: 'json', content: pretty });
+                        } catch {
+                            parts.push({ type: 'text', content: jsonStr });
+                        }
+                        buffer = [];
+                        inJSON = false;
+                    }
+                } else {
+                    buffer.push(line);
+                }
+            }
+            if (buffer.length > 0) {
+                parts.push({ type: inJSON ? 'json' : 'text', content: buffer.join('\n') });
+            }
+
+            if (parts.length === 0) {
+                return <div className="log-detail">{text}</div>;
+            }
+
+            return (
+                <div>
+                    {parts.map((p, idx) => {
+                        if (p.type === 'json') {
+                            return (
+                                <div key={idx} className="json-block"
+                                    dangerouslySetInnerHTML={{ __html: highlightJSON(p.content) }} />
+                            );
+                        }
+                        return <div key={idx} className="log-detail">{p.content}</div>;
+                    })}
+                </div>
+            );
+        }
+
         // ==================== MAIN APP ====================
         function App() {
             const [tab, setTab] = useState('models');
@@ -154,11 +274,18 @@
             const [chatMessages, setChatMessages] = useState([]);
             const [chatInput, setChatInput] = useState('');
             const [running, setRunning] = useState(false);
-            const [selectedModel, setSelectedModel] = useState('fake');
-            const [selectedModelName, setSelectedModelName] = useState('fake');
+            const [selectedModel, setSelectedModel] = useState('');
+            const [selectedModelName, setSelectedModelName] = useState('');
             const [selectedApiKey, setSelectedApiKey] = useState('');
+            const [selectedBaseUrl, setSelectedBaseUrl] = useState('https://dashscope.aliyuncs.com/compatible-mode/v1');
             const [logs, setLogs] = useState([]);
             const [logOpen, setLogOpen] = useState(false);
+            const [logWidth, setLogWidth] = useState(440);
+            const [threadId, setThreadId] = useState(() => 'session-' + Math.random().toString(36).slice(2, 10));
+            const [conversations, setConversations] = useState([]);
+            const [loadingConversation, setLoadingConversation] = useState(false);
+            const [historyOpen, setHistoryOpen] = useState(false);
+            const draggingRef = useRef(false);
             const chatEndRef = useRef(null);
             const logEndRef = useRef(null);
 
@@ -167,11 +294,85 @@
                 setTimeout(() => setToast({ msg: '', show: false }), 2500);
             }, []);
 
+            // ==================== 历史对话 ====================
+            const loadConversations = useCallback(async () => {
+                try {
+                    const data = await api('/conversations');
+                    setConversations(data.conversations || []);
+                } catch { /* ignore */ }
+            }, []);
+
+            const loadConversation = useCallback(async (tid) => {
+                if (tid === threadId && chatMessages.length > 0) return; // 已经是当前对话
+                setLoadingConversation(true);
+                try {
+                    const data = await api(`/conversations/${encodeURIComponent(tid)}`);
+                    const msgs = data.messages || [];
+                    const formatted = [];
+                    for (const m of msgs) {
+                        const role = m.role === 'human' ? 'user' : m.role === 'ai' ? 'assistant' : m.role;
+                        if (role === 'tool') continue;
+                        if (role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+                            for (const tc of m.tool_calls) {
+                                const tcName = tc.name || tc.function?.name || '?';
+                                formatted.push({ role: 'tool-start', content: `🔧 开始调用工具: ${tcName}`, name: tcName });
+                            }
+                        }
+                        if (m.content && m.content.trim()) {
+                            formatted.push({ role, content: m.content });
+                        }
+                    }
+                    setChatMessages(formatted);
+                    setLogs([]);
+                    setThreadId(tid);
+                } catch (err) {
+                    showToast('❌ 加载对话失败: ' + err.message);
+                }
+                setLoadingConversation(false);
+            }, [threadId, chatMessages, showToast]);
+
+            const deleteConversation = useCallback(async (tid, e) => {
+                e.stopPropagation();
+                if (!confirm('确定要删除这个对话吗？')) return;
+                try {
+                    await api(`/conversations/${encodeURIComponent(tid)}`, { method: 'DELETE' });
+                    showToast('🗑️ 对话已删除');
+                    // 如果删除的是当前对话，切换到新会话
+                    if (tid === threadId) {
+                        setChatMessages([]);
+                        setLogs([]);
+                        setThreadId('session-' + Math.random().toString(36).slice(2, 10));
+                    }
+                    await loadConversations();
+                } catch (err) {
+                    showToast('❌ 删除失败: ' + err.message);
+                }
+            }, [threadId, showToast, loadConversations]);
+
             // Load data
             useEffect(() => {
-                api('/models').then(setModels).catch(() => {});
-                api('/tools').then(t => { setTools(t); setToolEnabled({}); }).catch(() => {});
+                api('/models').then(data => {
+                    setModels(data);
+                    // 自动选中 pro 模型
+                    const proEntry = Object.entries(data).find(([_, m]) => m.model_name === 'deepseek-v4-pro');
+                    const firstModel = proEntry || Object.entries(data)[0];
+                    if (firstModel) {
+                        const [name, m] = firstModel;
+                        setSelectedModelName(name);
+                        setSelectedModel(m.model_name);
+                        setSelectedApiKey(m.api_key || '');
+                        setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+                    }
+                }).catch(() => {});
+                api('/tools').then(t => {
+                    setTools(t);
+                    // 默认全部工具开启
+                    const allOn = {};
+                    Object.keys(t).forEach(k => allOn[k] = true);
+                    setToolEnabled(allOn);
+                }).catch(() => {});
                 api('/prompt').then(d => setPrompt(d.content)).catch(() => {});
+                loadConversations();
             }, []);
 
             useEffect(() => {
@@ -181,6 +382,34 @@
             useEffect(() => {
                 logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [logs]);
+
+            // ── 日志抽屉拖拽调整宽度 ──
+            const onDragStart = useCallback((e) => {
+                e.preventDefault();
+                draggingRef.current = true;
+                const startX = e.clientX;
+                const startWidth = logWidth;
+
+                const onMove = (ev) => {
+                    if (!draggingRef.current) return;
+                    const delta = startX - ev.clientX;
+                    const newWidth = Math.min(900, Math.max(280, startWidth + delta));
+                    setLogWidth(newWidth);
+                };
+
+                const onUp = () => {
+                    draggingRef.current = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            }, [logWidth]);
 
             // ==================== MODEL CRUD ====================
             const saveModel = useCallback(async (m) => {
@@ -201,7 +430,7 @@
                     const updated = await api('/models');
                     setModels(updated);
                     if (selectedModel === name) {
-                        setSelectedModel('fake');
+                        setSelectedModel('');
                         setSelectedApiKey('');
                     }
                     showToast('🗑️ 模型已删除');
@@ -254,37 +483,84 @@
                 setChatInput('');
                 setRunning(true);
                 setLogs([]);
+                setLogOpen(true);  // 自动打开日志抽屉
+                // 添加"思考中"占位
+                const thinkingKey = Date.now();
+                setChatMessages(prev => [...prev, { role: 'thinking', content: '⏳ 思考中...', _key: thinkingKey }]);
 
                 try {
-                    const result = await api('/run', {
+                    const response = await fetch(`${API_BASE}/run-stream`, {
                         method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             model_name: selectedModel,
                             api_key: selectedApiKey,
+                            base_url: selectedBaseUrl,
                             system_prompt: prompt,
                             tools: selectedTools,
                             max_iterations: 10,
                             input: userMsg.content,
+                            thread_id: threadId,
                         }),
                     });
 
-                    if (result.logs) setLogs(result.logs);
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(errText || `HTTP ${response.status}`);
+                    }
 
-                    // Skip first message from API (it's the user message already added)
-                    const apiMsgs = (result.messages || []);
-                    const newMsgs = apiMsgs.filter((m, i) => !(i === 0 && m.role === 'user')).map(m => ({
-                        role: m.role,
-                        content: m.content,
-                        name: m.name,
-                    }));
-                    setChatMessages(prev => [...prev, ...newMsgs]);
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+
+                        // 按双换行分割 SSE 事件
+                        const parts = buffer.split('\n\n');
+                        buffer = parts.pop();  // 最后一段可能不完整
+
+                        for (const part of parts) {
+                            const lines = part.split('\n');
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const evt = JSON.parse(line.slice(6));
+                                        if (evt.type === 'log') {
+                                            // 移除第一条用户消息日志
+                                            setLogs(prev => [...prev, { step: evt.step, detail: evt.detail, level: evt.level, timestamp: evt.timestamp }]);
+                                        } else if (evt.type === 'msg') {
+                                            // 移除思考中占位
+                                            setChatMessages(prev => {
+                                                const filtered = prev.filter(m => m._key !== thinkingKey);
+                                                return [...filtered, { role: evt.role, content: evt.content, name: evt.name }];
+                                            });
+                                        } else if (evt.type === 'done') {
+                                            if (evt.thread_id) setThreadId(evt.thread_id);
+                                        } else if (evt.type === 'error') {
+                                            setChatMessages(prev => {
+                                                const filtered = prev.filter(m => m._key !== thinkingKey);
+                                                return [...filtered, { role: 'assistant', content: `❌ 错误: ${evt.message}` }];
+                                            });
+                                        }
+                                    } catch { /* 忽略解析错误 */ }
+                                }
+                            }
+                        }
+                    }
+                    // 清理残留的思考中占位
+                    setChatMessages(prev => prev.filter(m => m._key !== thinkingKey));
                 } catch (err) {
-                    // Try to fetch logs even on error
-                    try { const lr = await api('/logs'); setLogs(lr.logs || []); } catch {}
-                    setChatMessages(prev => [...prev, { role: 'assistant', content: `❌ 错误: ${err.message}` }]);
+                    setChatMessages(prev => {
+                        const filtered = prev.filter(m => m._key !== thinkingKey);
+                        return [...filtered, { role: 'assistant', content: `❌ 错误: ${err.message}` }];
+                    });
                 }
                 setRunning(false);
-            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools]);
+                loadConversations();
+            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations]);
 
             const handleKeyDown = useCallback((e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -296,14 +572,16 @@
             // ==================== SELECT MODEL ====================
             const selectModel = useCallback((name) => {
                 setSelectedModelName(name);
-                if (name === 'fake') {
-                    setSelectedModel('fake');
+                if (!name) {
+                    setSelectedModel('');
                     setSelectedApiKey('');
+                    setSelectedBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1');
                 } else {
                     const m = models[name];
                     if (m) {
                         setSelectedModel(m.model_name);
                         setSelectedApiKey(m.api_key || '');
+                        setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
                     }
                 }
             }, [models]);
@@ -342,14 +620,71 @@
                             <h1>🤖 LangGraph Agent</h1>
                             <span className="header-subtitle">配置 · 管理 · 运行</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px' }}>
-                            <span style={{ color: selectedModel === 'fake' ? '#4a6a8a' : '#7c4dff' }}>
-                                模型: {selectedModel === 'fake' ? '本地模拟' : selectedModelName || selectedModel}
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '12px' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
+                                模型: {selectedModel ? (selectedModelName || selectedModel) : '未选择'}
                             </span>
                             {activeToolCount > 0 && (
                                 <span className="status-badge">{activeToolCount} 个工具</span>
                             )}
-                            <button className="btn btn-sm" style={{ background: logOpen ? '#7c4dff' : '#2a2a4a', color: '#e0e0e0', marginLeft: '4px' }}
+                            <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }}
+                                onClick={() => {
+                                    setChatMessages([]);
+                                    setLogs([]);
+                                    setThreadId('session-' + Math.random().toString(36).slice(2, 10));
+                                }}
+                                title="新建会话">
+                                🆕 新会话
+                            </button>
+                            <div style={{ position: 'relative' }}>
+                                <button className="btn btn-sm" style={{ background: historyOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }}
+                                    onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) loadConversations(); }}
+                                    title="历史对话">
+                                    💬 历史
+                                </button>
+                                {historyOpen && (
+                                    <>
+                                        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setHistoryOpen(false)} />
+                                        <div className="history-dropdown">
+                                            <div className="history-dropdown-header">
+                                                <span>历史对话 · {conversations.length} 个</span>
+                                                <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569', fontSize: '10px' }}
+                                                    onClick={() => setHistoryOpen(false)}>✕</button>
+                                            </div>
+                                            <div className="history-dropdown-list">
+                                                {loadingConversation && (
+                                                    <div className="empty-state" style={{ padding: '16px' }}>
+                                                        <div>⏳ 加载中...</div>
+                                                    </div>
+                                                )}
+                                                {conversations.length === 0 && !loadingConversation && (
+                                                    <div className="empty-state">
+                                                        <div style={{ fontSize: '13px' }}>暂无历史对话</div>
+                                                        <div style={{ marginTop: '4px', fontSize: '11px' }}>发送消息后自动生成</div>
+                                                    </div>
+                                                )}
+                                                <div className="conv-list">
+                                                    {conversations.map(conv => (
+                                                        <div key={conv.thread_id}
+                                                            className={`conv-item ${conv.thread_id === threadId ? 'active' : ''}`}
+                                                            onClick={() => { loadConversation(conv.thread_id); setHistoryOpen(false); }}>
+                                                            <div className="conv-item-title">{conv.title}</div>
+                                                            <div className="conv-item-meta">
+                                                                <span>{conv.msg_count} 条消息</span>
+                                                                {conv.created_at && <span>{conv.created_at.slice(0, 16).replace('T', ' ')}</span>}
+                                                            </div>
+                                                            <button className="conv-item-delete"
+                                                                onClick={(e) => deleteConversation(conv.thread_id, e)}
+                                                                title="删除对话">✕</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <button className="btn btn-sm" style={{ background: logOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)', color: '#fff', marginLeft: '4px', backdropFilter: 'blur(4px)' }}
                                 onClick={() => setLogOpen(!logOpen)}>
                                 📋 日志
                             </button>
@@ -376,25 +711,15 @@
                                 {tab === 'models' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                            <span style={{ fontSize: '12px', color: '#8a9aaa' }}>大模型配置</span>
-                                            <button className="btn btn-primary btn-sm" onClick={() => setEditingModel({ name: '', model_name: 'deepseek-v4-flash', api_key: '', temperature: 0.7, max_tokens: 4096, _existing: false })}>+ 新增</button>
-                                        </div>
-
-                                        {/* Built-in fake model */}
-                                        <div className={`config-item ${selectedModel === 'fake' ? 'selected' : ''}`}
-                                            onClick={() => selectModel('fake')}>
-                                            <div className="config-item-header">
-                                                <span className="config-item-name">🖥️ 本地模拟</span>
-                                                <span style={{ fontSize: '10px', color: '#4a6a8a' }}>内置</span>
-                                            </div>
-                                            <div className="config-item-desc">无需 API Key，模拟工具调用</div>
+                                            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>大模型配置</span>
+                                            <button className="btn btn-primary btn-sm" onClick={() => setEditingModel({ name: '', model_name: 'deepseek-v4-pro', api_key: '', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', temperature: 0.7, max_tokens: 4096, _existing: false })}>+ 新增</button>
                                         </div>
 
                                         {modelList.length === 0 && (
                                             <div className="empty-state">
                                                 <div className="big-icon">🧠</div>
                                                 <div>暂无模型配置</div>
-                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加 DeepSeek 模型</div>
+                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加模型</div>
                                             </div>
                                         )}
 
@@ -406,7 +731,7 @@
                                                         <div className="config-item-desc">{m.model_name}</div>
                                                     </div>
                                                     <div className="config-item-actions">
-                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                        <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
                                                             onClick={(e) => { e.stopPropagation(); setEditingModel({ ...m, _existing: true }); }}>编辑</button>
                                                         <button className="btn btn-sm btn-danger"
                                                             onClick={(e) => { e.stopPropagation(); deleteModel(m.name); }}>删除</button>
@@ -439,13 +764,19 @@
                                                         placeholder="sk-xxxxxxxxxxxxxxxx" />
                                                 </div>
                                                 <div className="form-group">
+                                                    <label>API 地址 (base_url)</label>
+                                                    <input className="form-control" value={editingModel.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1'}
+                                                        onChange={e => setEditingModel({ ...editingModel, base_url: e.target.value })}
+                                                        placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+                                                </div>
+                                                <div className="form-group">
                                                     <label>Temperature ({editingModel.temperature})</label>
                                                     <input className="form-control" type="range" min="0" max="2" step="0.1"
                                                         value={editingModel.temperature}
                                                         onChange={e => setEditingModel({ ...editingModel, temperature: parseFloat(e.target.value) })} />
                                                 </div>
                                                 <div className="btn-group">
-                                                    <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#b0c0d0' }}
+                                                    <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
                                                         onClick={() => setEditingModel(null)}>取消</button>
                                                     <button className="btn btn-primary btn-sm"
                                                         onClick={() => saveModel(editingModel)} disabled={!editingModel.name}>保存</button>
@@ -459,7 +790,7 @@
                                 {tab === 'tools' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                            <span style={{ fontSize: '12px', color: '#8a9aaa' }}>工具配置</span>
+                                            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>工具配置</span>
                                             <button className="btn btn-primary btn-sm"
                                                 onClick={() => setEditingTool({ name: '', description: '', url: '', method: 'GET', headers: {}, parameters: [{ name: 'query', type: 'string', description: '', required: true }], _existing: false })}>
                                                 + 新增</button>
@@ -480,8 +811,8 @@
                                                 <div className="config-item-header">
                                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                         <div onClick={() => toggleTool(t.name)}
-                                                            style={{ width: '32px', height: '18px', borderRadius: '9px', background: isOn ? '#7c4dff' : '#3a3a5a', position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
-                                                            <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: 'white', position: 'absolute', top: '2px', left: isOn ? '16px' : '2px', transition: 'all 0.2s' }} />
+                                                            style={{ width: '34px', height: '20px', borderRadius: '10px', background: isOn ? '#667eea' : '#cbd5e1', position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
+                                                            <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: '2px', left: isOn ? '16px' : '2px', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
                                                         </div>
                                                         <div>
                                                             <span className="config-item-name">{t.name}</span>
@@ -489,9 +820,9 @@
                                                         </div>
                                                     </div>
                                                     <div className="config-item-actions">
-                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                        <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
                                                             onClick={(e) => { e.stopPropagation(); setEditingTool({ ...t, _existing: true }); }}>编辑</button>
-                                                        <button className="btn btn-sm btn-danger"
+                                                        <button className="btn btn-sm btn-danger" style={{ background: '#fee2e2', color: '#dc2626' }}
                                                             onClick={(e) => { e.stopPropagation(); deleteTool(t.name); }}>删除</button>
                                                     </div>
                                                 </div>
@@ -516,8 +847,8 @@
                                                 </div>
 
                                                 {/* API Endpoint */}
-                                                <div style={{ marginTop: '8px', marginBottom: '8px', padding: '8px', background: '#0f1a2a', borderRadius: '6px' }}>
-                                                    <div style={{ fontSize: '11px', color: '#8a9aaa', marginBottom: '6px' }}>API 接口配置（留空则使用内置模拟）</div>
+                                                <div style={{ marginTop: '8px', marginBottom: '8px', padding: '10px', background: '#f1f5f9', borderRadius: '8px', border: '1.5px solid #e2e8f0' }}>
+                                                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 500 }}>API 接口配置（留空则使用内置模拟）</div>
                                                     <div className="form-group">
                                                         <label>接口地址 (URL)</label>
                                                         <input className="form-control" value={editingTool.url || ''}
@@ -549,9 +880,9 @@
                                                 </div>
 
                                                 <div style={{ marginTop: '10px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#8a9aaa', marginBottom: '6px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>
                                                         <span>请求参数</span>
-                                                        <button className="btn btn-sm" style={{ background: '#2a2a4a', color: '#b0c0d0' }}
+                                                        <button className="btn btn-sm" style={{ background: '#e2e8f0', color: '#475569' }}
                                                             onClick={() => setEditingTool({
                                                                 ...editingTool,
                                                                 parameters: [...editingTool.parameters, { name: '', type: 'string', description: '', required: false }]
@@ -608,7 +939,7 @@
                                                 </div>
 
                                                 {/* Preview of tools JSON */}
-                                                <div style={{ marginTop: '8px', padding: '8px', background: '#0a0a1a', borderRadius: '4px', fontSize: '10px', color: '#6a8aaa', maxHeight: '140px', overflow: 'auto', fontFamily: 'monospace' }}>
+                                                <div style={{ marginTop: '8px', padding: '10px', background: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#94a3b8', maxHeight: '140px', overflow: 'auto', fontFamily: 'monospace' }}>
                                                     <div>tools 结构预览{editingTool.url ? ' (HTTP工具)' : ' (本地工具)'}:</div>
                                                     {JSON.stringify({
                                                         name: editingTool.name || 'example_tool',
@@ -624,7 +955,7 @@
                                                 </div>
 
                                                 <div className="btn-group">
-                                                    <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#b0c0d0' }}
+                                                    <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
                                                         onClick={() => setEditingTool(null)}>取消</button>
                                                     <button className="btn btn-primary btn-sm"
                                                         onClick={() => saveTool(editingTool)} disabled={!editingTool.name}>保存</button>
@@ -653,7 +984,7 @@
                                             <button className="btn btn-primary" onClick={savePrompt}>💾 保存提示词</button>
                                         </div>
 
-                                        <div style={{ marginTop: '12px', padding: '10px', background: '#0f1a2a', borderRadius: '6px', fontSize: '11px', color: '#6a8aaa', lineHeight: '1.8' }}>
+                                        <div style={{ marginTop: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '11px', color: '#475569', lineHeight: '1.8', border: '1.5px solid #e2e8f0' }}>
                                             <strong>提示词建议:</strong><br />
                                             • 明确角色：你是一个医疗AI助手<br />
                                             • 说明能力：你可以使用搜索、计算等工具<br />
@@ -675,39 +1006,42 @@
                                             配置好左侧的模型、工具和提示词<br />
                                             在下方输入问题开始对话<br /><br />
                                             <span style={{ fontSize: '11px', color: '#3a4a6a' }}>
-                                                当前: {selectedModel === 'fake' ? '本地模拟模式' : selectedModel}
+                                                当前: {selectedModel || '未选择模型'}
                                                 {activeToolCount > 0 ? ` · ${activeToolCount} 个工具` : ''}
                                             </span>
                                         </p>
                                     </div>
                                 )}
-                                {chatMessages.map((msg, i) => (
-                                    <div key={i} className={`msg ${msg.role === 'user' ? 'user' : msg.role === 'tool' ? 'tool' : 'assistant'}`}>
-                                        <div className="msg-label">
-                                            {msg.role === 'user' ? '你' : msg.role === 'tool' ? `工具 (${msg.name || ''})` : 'AI'}
-                                        </div>
+                                {chatMessages.map((msg, i) => {
+                                    const isThinking = msg.role === 'thinking';
+                                    const cls = msg.role === 'user' ? 'user' : msg.role === 'tool' ? 'tool' : msg.role === 'tool-start' ? 'tool-start' : isThinking ? 'thinking' : 'assistant';
+                                    const label = msg.role === 'user' ? '你' : msg.role === 'tool' ? `工具 (${msg.name || ''})` : msg.role === 'tool-start' ? '工具调用' : isThinking ? '' : 'AI';
+                                    return (
+                                    <div key={i} className={`msg ${cls}`}>
+                                        {!isThinking && <div className="msg-label">{label}</div>}
                                         <div className="msg-bubble">{msg.content}</div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 <div ref={chatEndRef} />
                             </div>
 
                             <div className="chat-input-area">
-                                <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '11px', color: '#5a7a9a' }}>模型:</span>
-                                    <select style={{ padding: '4px 8px', border: '1px solid #2a3a5a', borderRadius: '4px', background: '#1a1a3e', color: '#e0e0e0', fontSize: '11px', cursor: 'pointer' }}
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>模型:</span>
+                                    <select style={{ padding: '5px 12px', border: '1.5px solid #e2e8f0', borderRadius: '8px', background: '#fff', color: '#1e293b', fontSize: '12px', cursor: 'pointer', fontWeight: 500, outline: 'none' }}
                                         value={selectedModelName}
                                         onChange={e => selectModel(e.target.value)}>
-                                        <option value="fake">本地模拟</option>
+                                        <option value="">-- 请选择模型 --</option>
                                         {modelList.map(m => (
                                             <option key={m.name} value={m.name}>{m.name} ({m.model_name})</option>
                                         ))}
                                     </select>
-                                    <span style={{ fontSize: '11px', color: '#5a7a9a', marginLeft: '8px' }}>工具:</span>
+                                    <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontWeight: 600 }}>工具:</span>
                                     {activeToolCount === 0
-                                        ? <span style={{ fontSize: '10px', color: '#4a5a7a' }}>未开启</span>
+                                        ? <span style={{ fontSize: '11px', color: '#94a3b8' }}>未开启</span>
                                         : Object.entries(tools).filter(([name]) => toolEnabled[name]).map(([name]) => (
-                                            <span key={name} style={{ fontSize: '11px', padding: '2px 8px', background: '#2a1a5e', borderRadius: '4px', color: '#7c4dff' }}>{name}</span>
+                                            <span key={name} style={{ fontSize: '11px', padding: '3px 10px', background: '#eef2ff', borderRadius: '8px', color: '#667eea', fontWeight: 600 }}>{name}</span>
                                         ))
                                     }
                                 </div>
@@ -730,31 +1064,43 @@
 
                     {/* Log Drawer */}
                     {logOpen && (
-                        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px', background: '#0f1a2a', borderLeft: '1px solid #2a3a5a', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 20px rgba(0,0,0,0.5)' }}>
-                            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a3a5a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontWeight: 600, fontSize: '14px' }}>📋 执行日志</span>
-                                <button className="btn btn-sm" style={{ background: '#3a3a5a', color: '#e0e0e0' }}
+                        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${logWidth}px`, background: '#fff', borderLeft: '1.5px solid #e2e8f0', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.1)', transition: draggingRef.current ? 'none' : 'width 0.15s ease' }}>
+                            {/* 拖拽手柄 */}
+                            <div
+                                onMouseDown={onDragStart}
+                                style={{
+                                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                                    width: '6px', cursor: 'col-resize', zIndex: 10,
+                                    background: 'transparent',
+                                }}
+                                title="拖拽调整宽度"
+                            />
+                            <div style={{ padding: '14px 20px', borderBottom: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+                                <span style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b' }}>📋 执行日志</span>
+                                <button className="btn btn-sm" style={{ background: '#e2e8f0', color: '#475569' }}
                                     onClick={() => setLogOpen(false)}>✕ 关闭</button>
                             </div>
-                            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.8' }}>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.8', background: '#fafbfc' }}>
                                 {logs.length === 0 && (
-                                    <div style={{ color: '#4a5a7a', textAlign: 'center', padding: '30px 0' }}>
-                                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>📭</div>
-                                        <div>暂无日志</div>
-                                        <div style={{ fontSize: '11px', marginTop: '4px' }}>运行 Agent 后将显示详细执行步骤</div>
+                                    <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
+                                        <div style={{ fontSize: '28px', marginBottom: '10px' }}>📭</div>
+                                        <div style={{ fontWeight: 600 }}>暂无日志</div>
+                                        <div style={{ fontSize: '11px', marginTop: '6px' }}>运行 Agent 后将显示详细执行步骤</div>
                                     </div>
                                 )}
                                 {logs.map((log, i) => (
                                     <div key={i} style={{
-                                        padding: '6px 8px', marginBottom: '4px', borderRadius: '4px',
-                                        background: log.level === 'error' ? '#3a1a1a' : '#1a1a3e',
-                                        borderLeft: `3px solid ${log.level === 'error' ? '#c62828' : log.step.includes('失败') ? '#c62828' : '#7c4dff'}`,
+                                        padding: '8px 10px', marginBottom: '6px', borderRadius: '8px',
+                                        background: log.level === 'error' ? '#fef2f2' : '#fff',
+                                        border: `1.5px solid ${log.level === 'error' ? '#fecaca' : '#e2e8f0'}`,
+                                        borderLeft: `4px solid ${log.level === 'error' ? '#dc2626' : log.step.includes('失败') ? '#dc2626' : '#667eea'}`,
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                                     }}>
-                                        <div style={{ display: 'flex', gap: '8px', color: '#6a8aaa', fontSize: '10px' }}>
+                                        <div style={{ display: 'flex', gap: '10px', color: '#94a3b8', fontSize: '10px', fontWeight: 600 }}>
                                             <span>{log.timestamp || ''}</span>
-                                            <span style={{ color: log.level === 'error' ? '#ef5350' : '#7c4dff' }}>{log.step}</span>
+                                            <span style={{ color: log.level === 'error' ? '#dc2626' : '#667eea' }}>{log.step}</span>
                                         </div>
-                                        <div style={{ color: log.level === 'error' ? '#ef9a9a' : '#b0c0d0', fontSize: '11px', marginTop: '2px', wordBreak: 'break-all' }}>{log.detail}</div>
+                                        <LogDetail text={log.detail} />
                                     </div>
                                 ))}
                                 <div ref={logEndRef} />
