@@ -20,6 +20,8 @@ langgraph/
 ├── setup.ps1               # Windows 一键安装脚本
 ├── .env                    # 环境变量配置
 ├── langgraph.json          # LangGraph CLI 配置
+├── config.models.example.json  # 模型配置模板（复制到 data/models.json）
+├── config.tools.example.json   # 工具配置模板（复制到 data/tools.json）
 ├── app/
 │   ├── agent_setup.py      # Agent 核心：模型初始化、工具注册、checkpointer、回调
 │   ├── server.py           # FastAPI 路由：模型/工具/提示词 CRUD、对话 API、流式 API
@@ -36,50 +38,65 @@ langgraph/
     └── checkpoints.db      # SQLite 对话上下文数据库（自动生成）
 ```
 
-## 依赖安装
+## 快速开始（从 GitHub 克隆后首次使用）
 
-### Python 版本要求
+### 1. 安装依赖
 
-Python 3.10+
-
-### 安装步骤
-
-**方式一：一键安装（Windows PowerShell）**
+**Python 版本要求**: 3.10+
 
 ```powershell
+# Windows 一键安装（自动创建 venv + 安装依赖 + 创建 data 目录）
 .\setup.ps1
 ```
 
-**方式二：手动安装**
+或手动安装：
 
 ```bash
-# 创建虚拟环境
 python -m venv venv
-
-# 激活虚拟环境
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# 安装依赖
+venv\Scripts\activate      # Windows
+# source venv/bin/activate   # Linux/Mac
 pip install -r requirements.txt
+mkdir data                  # 创建数据目录
 ```
 
-### 依赖清单
+### 2. 配置模型和 API Key
+
+仓库不包含 API 密钥（`data/` 已 gitignore），首次使用需要配置：
+
+**方式一：复制示例文件（推荐）**
+
+```powershell
+copy config.models.example.json data\models.json
+copy config.tools.example.json data\tools.json
+# 然后编辑 data\models.json，把 api_key 改成你自己的密钥
+```
+
+**方式二：启动后在页面中配置**
+
+直接启动服务，在左侧「模型」标签页点击「新增」填写模型名称和 API Key。
+
+### 3. 启动服务
+
+```bash
+python main.py
+```
+
+访问 **http://localhost:19527** 即可使用。
+
+## 依赖清单
 
 | 包名 | 版本要求 | 用途 |
 |------|---------|------|
 | `langgraph` | >=1.2.0 | Agent 工作流编排 |
-| `langgraph-checkpoint-sqlite` | - | SQLite 对话上下文持久化 |
+| `langgraph-checkpoint-sqlite` | - | SQLite 对话上下文持久化（langgraph 内置） |
 | `langchain-openai` | >=0.1.0 | OpenAI 兼容模型调用 |
 | `langchain-core` | >=0.1.0 | LangChain 核心消息类型 |
 | `fastapi` | >=0.100.0 | Web API 框架 |
 | `uvicorn` | >=0.20.0 | ASGI 服务器 |
 | `pydantic` | >=2.0 | 数据模型验证 |
 | `httpx` | >=0.25.0 | HTTP 客户端 |
-| `msgpack` | - | Checkpoint 序列化（langgraph 自动安装） |
-| `aiosqlite` | - | 异步 SQLite 支持 |
+| `aiosqlite` | >=0.20.0 | 异步 SQLite 驱动（Checkpointer 需要） |
+| `msgpack` | >=1.0 | Checkpoint 二进制序列化 |
 
 ## 启动服务
 

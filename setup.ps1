@@ -31,7 +31,7 @@ $python = Join-Path $venvPath "Scripts\python.exe"
 Write-Host "[信息] 安装依赖包 (可能需要几分钟)..." -ForegroundColor Yellow
 & $pip install --upgrade pip
 
-& $pip install langgraph langgraph-cli langgraph-sdk fastapi uvicorn pyyaml jinja2 pydantic python-multipart httpx sse-starlette
+& $pip install -r requirements.txt
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[错误] 安装依赖失败" -ForegroundColor Red
@@ -39,8 +39,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[✓] 依赖安装完成" -ForegroundColor Green
 
-# Create directories
-$dirs = @("workflows", "configs", "frontend", "scripts")
+# Create directories (data/ 用于存放配置文件和 SQLite 数据库)
+$dirs = @("workflows", "configs", "frontend", "scripts", "data")
 foreach ($dir in $dirs) {
     $path = Join-Path $projectRoot $dir
     if (-not (Test-Path $path)) {
@@ -53,8 +53,8 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  安装完成!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "启动服务: .\scripts\start.ps1" -ForegroundColor Yellow
-Write-Host "或: .\scripts\start.bat" -ForegroundColor Yellow
+Write-Host "下一步:" -ForegroundColor Yellow
+Write-Host "  1. 启动服务: python main.py" -ForegroundColor White
+Write-Host "  2. 打开浏览器访问: http://localhost:19527" -ForegroundColor White
+Write-Host "  3. 在页面左侧「模型」标签添加你的 API Key" -ForegroundColor White
 Write-Host ""
-Write-Host "访问地址: http://localhost:8765" -ForegroundColor Green
-Write-Host "API 文档: http://localhost:8765/docs" -ForegroundColor Green

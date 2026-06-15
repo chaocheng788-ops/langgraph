@@ -1,0 +1,25 @@
+{
+  "_说明": "将此文件复制为 data/tools.json",
+  "weather": {
+    "name": "weather",
+    "description": "传入城市名字可查天气，如北京，传入北京",
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "description": "城市名称，如 北京、上海",
+        "required": true
+      }
+    ],
+    "parameters_schema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "城市名称，如 北京、上海"
+        }
+      },
+      "required": ["query"]
+    }
+  }
+}
