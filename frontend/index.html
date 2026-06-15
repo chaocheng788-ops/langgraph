@@ -152,62 +152,74 @@
 <body>
     <div id="root"></div>
     <script type="text/babel">
+        // ── React Hooks 解构 ──
         const { useState, useEffect, useRef, useCallback } = React;
 
+        // ── API 基础路径，所有后端请求由此拼接 ──
         const API_BASE = '/api';
 
-        // ==================== API HELPERS ====================
+        // ══════════════════════════════════════════════════════
+        // API 请求封装 — 统一处理 JSON 序列化和错误
+        // ══════════════════════════════════════════════════════
         async function api(path, options = {}) {
+            // 发送 fetch 请求，默认带 JSON Content-Type
             const res = await fetch(`${API_BASE}${path}`, {
                 headers: { 'Content-Type': 'application/json' },
-                ...options
+                ...options  // 调用方可覆盖 method/body/headers
             });
             if (!res.ok) {
+                // 尝试解析错误响应的 JSON，失败则用状态码
                 const err = await res.json().catch(() => ({ detail: res.statusText }));
                 throw new Error(err.detail || `HTTP ${res.status}`);
             }
-            return res.json();
+            return res.json();  // 解析成功响应的 JSON
         }
 
-        // ==================== TOAST ====================
+        // ══════════════════════════════════════════════════════
+        // Toast 通知组件 — 底部浮层提示，2.5 秒自动消失
+        // ══════════════════════════════════════════════════════
         function Toast({ msg, show }) {
             return <div className={`toast ${show ? 'show' : ''}`}>{msg}</div>;
         }
 
-        // ==================== JSON 格式化渲染 ====================
+        // ══════════════════════════════════════════════════════
+        // JSON 语法高亮 — 用正则替换生成带颜色的 HTML
+        // ══════════════════════════════════════════════════════
         function highlightJSON(jsonStr) {
-            // Escape HTML entities
+            // 先转义 HTML 实体防 XSS，再按类型着色
             return jsonStr
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                // Keys (quoted strings followed by colon)
+                // 键名（引号包裹 + 冒号） → 蓝色
                 .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:')
-                // String values
+                // 字符串值 → 绿色
                 .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="json-string">$1</span>')
-                // Numbers
+                // 数字 → 粉色
                 .replace(/:\s*(\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
-                // true/false
+                // 布尔值 → 紫色
                 .replace(/:\s*(true|false)/g, ': <span class="json-bool">$1</span>')
-                // null
+                // null → 灰色
                 .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
-                // Braces
+                // 括号 → 金色
                 .replace(/([\[\]{}])/g, '<span class="json-brace">$1</span>');
         }
 
+        // ── 日志详情组件：自动检测 JSON 块并高亮渲染 ──
         function LogDetail({ text }) {
-            // Try to detect and format JSON blocks
-            const parts = [];
+            // 将文本按行解析，识别 JSON 块并分离渲染
+            const parts = [];       // 分段结果: [{type: 'json'|'text', content}]
             const lines = text.split('\n');
-            let buffer = [];
-            let inJSON = false;
-            let braceDepth = 0;
+            let buffer = [];        // 当前累积的行
+            let inJSON = false;     // 是否正在 JSON 块内
+            let braceDepth = 0;     // 大括号/中括号嵌套深度
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 const trimmed = line.trim();
 
-                // Detect start of a real JSON block: [ or { followed by JSON-like content
+                // ── 检测 JSON 块起始：以 { 或 [ 开头且内容像 JSON ──
                 if (!inJSON && (trimmed.startsWith('{') || (trimmed.startsWith('[') && /^\[\s*("|\{|\[|\d|true|false|null)/.test(trimmed)))) {
                     if (buffer.length > 0) {
+                        // 之前的文本先存入
                         parts.push({ type: 'text', content: buffer.join('\n') });
                         buffer = [];
                     }
@@ -217,27 +229,31 @@
 
                 if (inJSON) {
                     buffer.push(line);
+                    // 统计括号深度
                     for (const ch of trimmed) {
                         if (ch === '{' || ch === '[') braceDepth++;
                         if (ch === '}' || ch === ']') braceDepth--;
                     }
-                    // JSON block ends when braces balance and we're past the opening
+                    // 括号平衡 + 不止一行 → JSON 块结束
                     if (braceDepth === 0 && buffer.length > 1) {
                         const jsonStr = buffer.join('\n');
                         try {
+                            // 解析后重新格式化，确保缩进一致
                             const parsed = JSON.parse(jsonStr);
                             const pretty = JSON.stringify(parsed, null, 2);
                             parts.push({ type: 'json', content: pretty });
                         } catch {
+                            // 解析失败按纯文本处理
                             parts.push({ type: 'text', content: jsonStr });
                         }
                         buffer = [];
                         inJSON = false;
                     }
                 } else {
-                    buffer.push(line);
+                    buffer.push(line);  // 非 JSON 行直接累积
                 }
             }
+            // ── 处理尾部残留 ──
             if (buffer.length > 0) {
                 parts.push({ type: inJSON ? 'json' : 'text', content: buffer.join('\n') });
             }
@@ -250,6 +266,7 @@
                 <div>
                     {parts.map((p, idx) => {
                         if (p.type === 'json') {
+                            // JSON 块：使用 dangerouslySetInnerHTML 渲染高亮 HTML
                             return (
                                 <div key={idx} className="json-block"
                                     dangerouslySetInnerHTML={{ __html: highlightJSON(p.content) }} />
@@ -261,105 +278,128 @@
             );
         }
 
-        // ==================== MAIN APP ====================
+        // ═══════════════════════════════════════════════════════════════
+        // MAIN APP 组件 — 整个页面的根组件
+        // ═══════════════════════════════════════════════════════════════
         function App() {
+            // ── 侧边栏标签页 ──
             const [tab, setTab] = useState('models');
-            const [models, setModels] = useState({});
-            const [tools, setTools] = useState({});
-            const [toolEnabled, setToolEnabled] = useState({});
-            const [prompt, setPrompt] = useState('');
-            const [toast, setToast] = useState({ msg: '', show: false });
-            const [editingModel, setEditingModel] = useState(null);
-            const [editingTool, setEditingTool] = useState(null);
-            const [chatMessages, setChatMessages] = useState([]);
-            const [chatInput, setChatInput] = useState('');
-            const [running, setRunning] = useState(false);
-            const [selectedModel, setSelectedModel] = useState('');
-            const [selectedModelName, setSelectedModelName] = useState('');
-            const [selectedApiKey, setSelectedApiKey] = useState('');
-            const [selectedBaseUrl, setSelectedBaseUrl] = useState('https://dashscope.aliyuncs.com/compatible-mode/v1');
-            const [logs, setLogs] = useState([]);
-            const [logOpen, setLogOpen] = useState(false);
-            const [logWidth, setLogWidth] = useState(440);
+            // ── 配置数据 ──
+            const [models, setModels] = useState({});          // {模型名: 配置对象}
+            const [tools, setTools] = useState({});            // {工具名: 配置对象}
+            const [toolEnabled, setToolEnabled] = useState({}); // {工具名: true/false}
+            const [prompt, setPrompt] = useState('');          // 系统提示词文本
+            const [toast, setToast] = useState({ msg: '', show: false });  // Toast 状态
+            // ── 编辑状态 ──
+            const [editingModel, setEditingModel] = useState(null);  // 正在编辑的模型
+            const [editingTool, setEditingTool] = useState(null);    // 正在编辑的工具
+            // ── 聊天状态 ──
+            const [chatMessages, setChatMessages] = useState([]);  // 消息列表 [{role, content}]
+            const [chatInput, setChatInput] = useState('');         // 输入框文本
+            const [running, setRunning] = useState(false);          // 是否正在执行
+            // ── 当前选中的模型配置 ──
+            const [selectedModel, setSelectedModel] = useState('');        // model_name（如 deepseek-v4-pro）
+            const [selectedModelName, setSelectedModelName] = useState(''); // 用户定义的名称（如 deepseek-1）
+            const [selectedApiKey, setSelectedApiKey] = useState('');       // API 密钥
+            const [selectedBaseUrl, setSelectedBaseUrl] = useState('https://dashscope.aliyuncs.com/compatible-mode/v1');  // API 地址
+            // ── 日志抽屉 ──
+            const [logs, setLogs] = useState([]);           // 日志列表
+            const [logOpen, setLogOpen] = useState(false);  // 是否打开
+            const [logWidth, setLogWidth] = useState(440);  // 抽屉宽度（像素）
+            // ── 会话 ID（Checkpointer 关联），随机生成 ──
             const [threadId, setThreadId] = useState(() => 'session-' + Math.random().toString(36).slice(2, 10));
-            const [conversations, setConversations] = useState([]);
-            const [loadingConversation, setLoadingConversation] = useState(false);
-            const [historyOpen, setHistoryOpen] = useState(false);
-            const draggingRef = useRef(false);
-            const chatEndRef = useRef(null);
-            const logEndRef = useRef(null);
+            // ── 历史对话 ──
+            const [conversations, setConversations] = useState([]);          // 对话列表
+            const [loadingConversation, setLoadingConversation] = useState(false);  // 加载中
+            const [historyOpen, setHistoryOpen] = useState(false);           // 下拉面板是否打开
+            // ── 拖拽 ref ──
+            const draggingRef = useRef(false);    // 日志抽屉拖拽状态
+            const chatEndRef = useRef(null);      // 聊天区自动滚动锚点
+            const logEndRef = useRef(null);       // 日志区自动滚动锚点
 
+            // ── showToast: 显示提示，2.5 秒后自动消失 ──
             const showToast = useCallback((msg) => {
                 setToast({ msg, show: true });
                 setTimeout(() => setToast({ msg: '', show: false }), 2500);
             }, []);
 
-            // ==================== 历史对话 ====================
+            // ═══════════════════════════════════════════════════════════════
+            // 历史对话 — 从后端加载/查看/删除
+            // ═══════════════════════════════════════════════════════════════
+
+            // ── loadConversations: 获取所有历史对话列表 ──
             const loadConversations = useCallback(async () => {
                 try {
                     const data = await api('/conversations');
                     setConversations(data.conversations || []);
-                } catch { /* ignore */ }
+                } catch { /* 静默忽略网络错误 */ }
             }, []);
 
+            // ── loadConversation: 点击某个对话，加载其完整消息到聊天区 ──
             const loadConversation = useCallback(async (tid) => {
-                if (tid === threadId && chatMessages.length > 0) return; // 已经是当前对话
+                if (tid === threadId && chatMessages.length > 0) return; // 已是当前对话，跳过
                 setLoadingConversation(true);
                 try {
                     const data = await api(`/conversations/${encodeURIComponent(tid)}`);
                     const msgs = data.messages || [];
                     const formatted = [];
                     for (const m of msgs) {
+                        // 将后端角色映射到前端显示角色
                         const role = m.role === 'human' ? 'user' : m.role === 'ai' ? 'assistant' : m.role;
-                        if (role === 'tool') continue;
+                        if (role === 'tool') continue;  // 跳过工具返回消息（日志抽屉中查看）
+                        // 如果 AI 消息有 tool_calls，先插入工具调用通知
                         if (role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
                             for (const tc of m.tool_calls) {
                                 const tcName = tc.name || tc.function?.name || '?';
                                 formatted.push({ role: 'tool-start', content: `🔧 开始调用工具: ${tcName}`, name: tcName });
                             }
                         }
+                        // 有文本内容才添加消息气泡
                         if (m.content && m.content.trim()) {
                             formatted.push({ role, content: m.content });
                         }
                     }
-                    setChatMessages(formatted);
-                    setLogs([]);
-                    setThreadId(tid);
+                    setChatMessages(formatted);  // 替换当前聊天区消息
+                    setLogs([]);                // 清空日志
+                    setThreadId(tid);            // 切换到该会话
                 } catch (err) {
                     showToast('❌ 加载对话失败: ' + err.message);
                 }
                 setLoadingConversation(false);
             }, [threadId, chatMessages, showToast]);
 
+            // ── deleteConversation: 删除对话（前端确认 → 调用 API → 刷新列表） ──
             const deleteConversation = useCallback(async (tid, e) => {
-                e.stopPropagation();
+                e.stopPropagation();  // 阻止事件冒泡，避免同时触发点击加载
                 if (!confirm('确定要删除这个对话吗？')) return;
                 try {
                     await api(`/conversations/${encodeURIComponent(tid)}`, { method: 'DELETE' });
                     showToast('🗑️ 对话已删除');
-                    // 如果删除的是当前对话，切换到新会话
+                    // 如果删除的是当前对话，重置为新会话
                     if (tid === threadId) {
                         setChatMessages([]);
                         setLogs([]);
                         setThreadId('session-' + Math.random().toString(36).slice(2, 10));
                     }
-                    await loadConversations();
+                    await loadConversations();  // 重新加载列表
                 } catch (err) {
                     showToast('❌ 删除失败: ' + err.message);
                 }
             }, [threadId, showToast, loadConversations]);
 
-            // Load data
+            // ═══════════════════════════════════════════════════════════════
+            // 页面初始化 — 加载模型、工具、提示词、历史对话
+            // ═══════════════════════════════════════════════════════════════
             useEffect(() => {
                 api('/models').then(data => {
                     setModels(data);
-                    // 自动选中 pro 模型
+                    // 自动选中 pro 模型（优先级最高）
                     const proEntry = Object.entries(data).find(([_, m]) => m.model_name === 'deepseek-v4-pro');
                     const firstModel = proEntry || Object.entries(data)[0];
                     if (firstModel) {
                         const [name, m] = firstModel;
-                        setSelectedModelName(name);
-                        setSelectedModel(m.model_name);
+                        setSelectedModelName(name);      // 用户自定义名称
+                        setSelectedModel(m.model_name);   // API 模型名
                         setSelectedApiKey(m.api_key || '');
                         setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
                     }
@@ -372,32 +412,38 @@
                     setToolEnabled(allOn);
                 }).catch(() => {});
                 api('/prompt').then(d => setPrompt(d.content)).catch(() => {});
-                loadConversations();
+                loadConversations();  // 加载历史对话列表
             }, []);
 
+            // ── 聊天消息变化时自动滚动到底部 ──
             useEffect(() => {
                 chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [chatMessages]);
 
+            // ── 日志变化时自动滚动到底部 ──
             useEffect(() => {
                 logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [logs]);
 
-            // ── 日志抽屉拖拽调整宽度 ──
+            // ═══════════════════════════════════════════════════════════════
+            // 日志抽屉拖拽调整宽度
+            // ═══════════════════════════════════════════════════════════════
             const onDragStart = useCallback((e) => {
                 e.preventDefault();
                 draggingRef.current = true;
-                const startX = e.clientX;
-                const startWidth = logWidth;
+                const startX = e.clientX;         // 鼠标起始 X 坐标
+                const startWidth = logWidth;       // 抽屉起始宽度
 
                 const onMove = (ev) => {
                     if (!draggingRef.current) return;
-                    const delta = startX - ev.clientX;
+                    const delta = startX - ev.clientX;  // 鼠标位移量
+                    // 限制宽度范围: 280px ~ 900px
                     const newWidth = Math.min(900, Math.max(280, startWidth + delta));
                     setLogWidth(newWidth);
                 };
 
                 const onUp = () => {
+                    // 清理事件监听，恢复鼠标样式
                     draggingRef.current = false;
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
@@ -407,17 +453,19 @@
 
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';  // 列宽拖拽光标
+                document.body.style.userSelect = 'none';     // 禁止选中文字
             }, [logWidth]);
 
-            // ==================== MODEL CRUD ====================
+            // ═══════════════════════════════════════════════════════════════
+            // 模型 CRUD — 增删改
+            // ═══════════════════════════════════════════════════════════════
             const saveModel = useCallback(async (m) => {
                 try {
                     await api('/models', { method: 'POST', body: JSON.stringify(m) });
-                    const updated = await api('/models');
+                    const updated = await api('/models');  // 重新加载列表
                     setModels(updated);
-                    setEditingModel(null);
+                    setEditingModel(null);  // 关闭编辑面板
                     showToast('✅ 模型已保存');
                 } catch (err) {
                     showToast('❌ ' + err.message);
@@ -429,6 +477,7 @@
                     await api(`/models/${encodeURIComponent(name)}`, { method: 'DELETE' });
                     const updated = await api('/models');
                     setModels(updated);
+                    // 如果删除的是当前选中的模型，清空选择
                     if (selectedModel === name) {
                         setSelectedModel('');
                         setSelectedApiKey('');
@@ -439,13 +488,15 @@
                 }
             }, [showToast, selectedModel]);
 
-            // ==================== TOOL CRUD ====================
+            // ═══════════════════════════════════════════════════════════════
+            // 工具 CRUD — 增删改
+            // ═══════════════════════════════════════════════════════════════
             const saveTool = useCallback(async (t) => {
                 try {
                     await api('/tools', { method: 'POST', body: JSON.stringify(t) });
                     const updated = await api('/tools');
                     setTools(updated);
-                    setToolEnabled({});
+                    setToolEnabled({});  // 重置开关状态
                     setEditingTool(null);
                     showToast('✅ 工具已保存');
                 } catch (err) {
@@ -465,7 +516,9 @@
                 }
             }, [showToast]);
 
-            // ==================== PROMPT ====================
+            // ═══════════════════════════════════════════════════════════════
+            // 提示词保存
+            // ═══════════════════════════════════════════════════════════════
             const savePrompt = useCallback(async () => {
                 try {
                     await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) });
@@ -475,32 +528,36 @@
                 }
             }, [prompt, showToast]);
 
-            // ==================== RUN ====================
+            // ═══════════════════════════════════════════════════════════════
+            // runAgent — 执行 Agent（SSE 流式模式）
+            // ═══════════════════════════════════════════════════════════════
             const runAgent = useCallback(async () => {
-                if (!chatInput.trim()) return;
+                if (!chatInput.trim()) return;  // 空输入不执行
+                // ── 第 1 步: 添加用户消息到聊天区 ──
                 const userMsg = { role: 'user', content: chatInput };
                 setChatMessages(prev => [...prev, userMsg]);
-                setChatInput('');
-                setRunning(true);
-                setLogs([]);
-                setLogOpen(true);  // 自动打开日志抽屉
-                // 添加"思考中"占位
+                setChatInput('');       // 清空输入框
+                setRunning(true);       // 进入运行状态
+                setLogs([]);            // 清空上次日志
+                setLogOpen(true);       // 自动打开日志抽屉
+                // ── 添加"思考中"占位动画 ──
                 const thinkingKey = Date.now();
                 setChatMessages(prev => [...prev, { role: 'thinking', content: '⏳ 思考中...', _key: thinkingKey }]);
 
                 try {
+                    // ── 第 2 步: 发送 POST 请求到 /run-stream ──
                     const response = await fetch(`${API_BASE}/run-stream`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            model_name: selectedModel,
-                            api_key: selectedApiKey,
-                            base_url: selectedBaseUrl,
-                            system_prompt: prompt,
-                            tools: selectedTools,
-                            max_iterations: 10,
-                            input: userMsg.content,
-                            thread_id: threadId,
+                            model_name: selectedModel,       // API 模型名
+                            api_key: selectedApiKey,          // API 密钥
+                            base_url: selectedBaseUrl,        // API 端点
+                            system_prompt: prompt,            // 系统提示词
+                            tools: selectedTools,             // 启用的工具列表
+                            max_iterations: 10,               // 最大推理轮数
+                            input: userMsg.content,           // 用户输入
+                            thread_id: threadId,              // 会话 ID
                         }),
                     });
 
@@ -509,59 +566,64 @@
                         throw new Error(errText || `HTTP ${response.status}`);
                     }
 
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
+                    // ── 第 3 步: 读取 SSE 流 ──
+                    const reader = response.body.getReader();  // 获取可读流
+                    const decoder = new TextDecoder();         // 字节 → 文本解码器
+                    let buffer = '';                           // SSE 缓冲区
 
                     while (true) {
                         const { done, value } = await reader.read();
-                        if (done) break;
+                        if (done) break;  // 流结束
                         buffer += decoder.decode(value, { stream: true });
 
-                        // 按双换行分割 SSE 事件
+                        // SSE 事件以双换行分隔: "data: ...\n\n"
                         const parts = buffer.split('\n\n');
-                        buffer = parts.pop();  // 最后一段可能不完整
+                        buffer = parts.pop();  // 最后一段可能不完整，保留到下次
 
                         for (const part of parts) {
                             const lines = part.split('\n');
                             for (const line of lines) {
                                 if (line.startsWith('data: ')) {
                                     try {
-                                        const evt = JSON.parse(line.slice(6));
+                                        const evt = JSON.parse(line.slice(6));  // 去掉 "data: " 前缀
                                         if (evt.type === 'log') {
-                                            // 移除第一条用户消息日志
+                                            // 日志事件 → 追加到日志列表
                                             setLogs(prev => [...prev, { step: evt.step, detail: evt.detail, level: evt.level, timestamp: evt.timestamp }]);
                                         } else if (evt.type === 'msg') {
-                                            // 移除思考中占位
+                                            // 消息事件 → 先移除思考中占位，再添加新消息
                                             setChatMessages(prev => {
                                                 const filtered = prev.filter(m => m._key !== thinkingKey);
                                                 return [...filtered, { role: evt.role, content: evt.content, name: evt.name }];
                                             });
                                         } else if (evt.type === 'done') {
+                                            // 完成事件 → 更新 thread_id
                                             if (evt.thread_id) setThreadId(evt.thread_id);
                                         } else if (evt.type === 'error') {
+                                            // 错误事件 → 显示错误消息
                                             setChatMessages(prev => {
                                                 const filtered = prev.filter(m => m._key !== thinkingKey);
                                                 return [...filtered, { role: 'assistant', content: `❌ 错误: ${evt.message}` }];
                                             });
                                         }
-                                    } catch { /* 忽略解析错误 */ }
+                                    } catch { /* 忽略 JSON 解析错误 */ }
                                 }
                             }
                         }
                     }
-                    // 清理残留的思考中占位
+                    // ── 清理残留的思考中占位 ──
                     setChatMessages(prev => prev.filter(m => m._key !== thinkingKey));
                 } catch (err) {
+                    // ── 网络错误 / 服务器错误 → 显示错误消息 ──
                     setChatMessages(prev => {
                         const filtered = prev.filter(m => m._key !== thinkingKey);
                         return [...filtered, { role: 'assistant', content: `❌ 错误: ${err.message}` }];
                     });
                 }
-                setRunning(false);
-                loadConversations();
+                setRunning(false);          // 恢复可输入状态
+                loadConversations();         // 刷新历史对话列表（新对话自动出现）
             }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations]);
 
+            // ── handleKeyDown: Enter 发送，Shift+Enter 换行 ──
             const handleKeyDown = useCallback((e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -569,36 +631,41 @@
                 }
             }, [runAgent]);
 
-            // ==================== SELECT MODEL ====================
+            // ═══════════════════════════════════════════════════════════════
+            // selectModel — 切换选中的模型配置
+            // ═══════════════════════════════════════════════════════════════
             const selectModel = useCallback((name) => {
                 setSelectedModelName(name);
                 if (!name) {
+                    // 取消选择 → 重置
                     setSelectedModel('');
                     setSelectedApiKey('');
                     setSelectedBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1');
                 } else {
                     const m = models[name];
                     if (m) {
-                        setSelectedModel(m.model_name);
+                        setSelectedModel(m.model_name);      // API 模型名
                         setSelectedApiKey(m.api_key || '');
                         setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
                     }
                 }
             }, [models]);
 
+            // ── toggleTool: 切换工具的启用/禁用状态 ──
             const toggleTool = useCallback((toolName) => {
                 setToolEnabled(prev => ({ ...prev, [toolName]: !prev[toolName] }));
             }, []);
 
-            // Compute selected tools (only enabled ones)
+            // ── selectedTools: 计算当前启用的工具列表（用于执行时传给后端） ──
             const selectedTools = Object.entries(tools)
-                .filter(([name]) => toolEnabled[name])
+                .filter(([name]) => toolEnabled[name])  // 只保留开关为 on 的
                 .map(([name, t]) => {
                     const tool = {
                         name: t.name,
                         description: t.description,
                         parameters: t.parameters_schema || t.parameters,
                     };
+                    // HTTP 工具需要携带 url/method/headers
                     if (t.url) {
                         tool.url = t.url;
                         tool.method = t.method || 'GET';
@@ -607,26 +674,32 @@
                     return tool;
                 });
 
-            const activeToolCount = selectedTools.length;
+            const activeToolCount = selectedTools.length;  // 活动工具数量
 
-            // ==================== RENDER ====================
-            const modelList = Object.values(models);
-            const toolList = Object.values(tools);
+            // ═══════════════════════════════════════════════════════════════
+            // RENDER — 整个页面 JSX
+            // ═══════════════════════════════════════════════════════════════
+            const modelList = Object.values(models);  // 模型数组
+            const toolList = Object.values(tools);      // 工具数组
 
             return (
                 <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+                    {/* ══════════════════ HEADER ══════════════════ */}
                     <header className="header">
                         <div style={{ display: 'flex', alignItems: 'center' }}>
                             <h1>🤖 LangGraph Agent</h1>
                             <span className="header-subtitle">配置 · 管理 · 运行</span>
                         </div>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '12px' }}>
+                            {/* ── 当前模型显示 ── */}
                             <span style={{ color: 'rgba(255,255,255,0.9)', fontWeight: 600 }}>
                                 模型: {selectedModel ? (selectedModelName || selectedModel) : '未选择'}
                             </span>
+                            {/* ── 工具数量徽章 ── */}
                             {activeToolCount > 0 && (
                                 <span className="status-badge">{activeToolCount} 个工具</span>
                             )}
+                            {/* ── 新会话按钮：重置 chatMessages/logs/threadId ── */}
                             <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }}
                                 onClick={() => {
                                     setChatMessages([]);
@@ -636,6 +709,7 @@
                                 title="新建会话">
                                 🆕 新会话
                             </button>
+                            {/* ── 历史对话下拉面板 ── */}
                             <div style={{ position: 'relative' }}>
                                 <button className="btn btn-sm" style={{ background: historyOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }}
                                     onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) loadConversations(); }}
@@ -644,6 +718,7 @@
                                 </button>
                                 {historyOpen && (
                                     <>
+                                        {/* 点击空白区域关闭 */}
                                         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }} onClick={() => setHistoryOpen(false)} />
                                         <div className="history-dropdown">
                                             <div className="history-dropdown-header">
@@ -684,6 +759,7 @@
                                     </>
                                 )}
                             </div>
+                            {/* ── 日志抽屉开关按钮 ── */}
                             <button className="btn btn-sm" style={{ background: logOpen ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)', color: '#fff', marginLeft: '4px', backdropFilter: 'blur(4px)' }}
                                 onClick={() => setLogOpen(!logOpen)}>
                                 📋 日志
@@ -692,7 +768,7 @@
                     </header>
 
                     <div className="layout">
-                        {/* Sidebar */}
+                        {/* ══════════════════ SIDEBAR — 模型/工具/提示词配置 ══════════════════ */}
                         <div className="sidebar">
                             <div className="sidebar-tabs">
                                 <div className={`sidebar-tab ${tab === 'models' ? 'active' : ''}`} onClick={() => setTab('models')}>
@@ -707,7 +783,7 @@
                             </div>
 
                             <div className="sidebar-content">
-                                {/* === MODELS TAB === */}
+                                {/* ═════ MODELS TAB ═════ */}
                                 {tab === 'models' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -740,6 +816,7 @@
                                             </div>
                                         ))}
 
+                                        {/* ── 模型编辑/新增表单 ── */}
                                         {editingModel && (
                                             <div className="config-detail">
                                                 <div className="config-detail-title">{editingModel.name ? '编辑模型' : '新增模型'}</div>
@@ -786,7 +863,7 @@
                                     </div>
                                 )}
 
-                                {/* === TOOLS TAB === */}
+                                {/* ═════ TOOLS TAB ═════ */}
                                 {tab === 'tools' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -805,11 +882,12 @@
                                         )}
 
                                         {toolList.map(t => {
-                                            const isOn = !!toolEnabled[t.name];
+                                            const isOn = !!toolEnabled[t.name];  // 当前工具是否启用
                                             return (
                                             <div key={t.name} className={`config-item ${isOn ? 'selected' : ''}`}>
                                                 <div className="config-item-header">
                                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {/* ── 开关按钮（CSS 实现的 toggle switch） ── */}
                                                         <div onClick={() => toggleTool(t.name)}
                                                             style={{ width: '34px', height: '20px', borderRadius: '10px', background: isOn ? '#667eea' : '#cbd5e1', position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
                                                             <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: '2px', left: isOn ? '16px' : '2px', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
@@ -830,6 +908,7 @@
                                             );
                                         })}
 
+                                        {/* ── 工具编辑/新增表单（含参数编辑器 + API 接口配置） ── */}
                                         {editingTool && (
                                             <div className="config-detail">
                                                 <div className="config-detail-title">{editingTool.name ? '编辑工具' : '新增工具'}</div>
@@ -846,7 +925,7 @@
                                                         placeholder="工具功能描述，LLM 据此判断何时调用" />
                                                 </div>
 
-                                                {/* API Endpoint */}
+                                                {/* API Endpoint 配置区域 */}
                                                 <div style={{ marginTop: '8px', marginBottom: '8px', padding: '10px', background: '#f1f5f9', borderRadius: '8px', border: '1.5px solid #e2e8f0' }}>
                                                     <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 500 }}>API 接口配置（留空则使用内置模拟）</div>
                                                     <div className="form-group">
@@ -871,7 +950,7 @@
                                                             <input className="form-control" value={editingTool.headers ? (typeof editingTool.headers === 'string' ? editingTool.headers : JSON.stringify(editingTool.headers)) : ''}
                                                                 onChange={e => {
                                                                     let h = e.target.value;
-                                                                    try { h = JSON.parse(h); } catch { }
+                                                                    try { h = JSON.parse(h); } catch { /* 解析失败保留原始字符串 */ }
                                                                     setEditingTool({ ...editingTool, headers: h });
                                                                 }}
                                                                 placeholder='{"Authorization": "Bearer xxx"}' />
@@ -879,6 +958,7 @@
                                                     </div>
                                                 </div>
 
+                                                {/* ── 请求参数编辑器 ── */}
                                                 <div style={{ marginTop: '10px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>
                                                         <span>请求参数</span>
@@ -938,7 +1018,7 @@
                                                     ))}
                                                 </div>
 
-                                                {/* Preview of tools JSON */}
+                                                {/* ── 工具 JSON 结构预览 ── */}
                                                 <div style={{ marginTop: '8px', padding: '10px', background: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#94a3b8', maxHeight: '140px', overflow: 'auto', fontFamily: 'monospace' }}>
                                                     <div>tools 结构预览{editingTool.url ? ' (HTTP工具)' : ' (本地工具)'}:</div>
                                                     {JSON.stringify({
@@ -965,7 +1045,7 @@
                                     </div>
                                 )}
 
-                                {/* === PROMPT TAB === */}
+                                {/* ═════ PROMPT TAB ═════ */}
                                 {tab === 'prompt' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -984,6 +1064,7 @@
                                             <button className="btn btn-primary" onClick={savePrompt}>💾 保存提示词</button>
                                         </div>
 
+                                        {/* ── 提示词编写建议 ── */}
                                         <div style={{ marginTop: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '11px', color: '#475569', lineHeight: '1.8', border: '1.5px solid #e2e8f0' }}>
                                             <strong>提示词建议:</strong><br />
                                             • 明确角色：你是一个医疗AI助手<br />
@@ -996,9 +1077,10 @@
                             </div>
                         </div>
 
-                        {/* Chat Area */}
+                        {/* ══════════════════ CHAT AREA — 消息列表 + 输入框 ══════════════════ */}
                         <div className="chat-area">
                             <div className="chat-messages">
+                                {/* ── 空状态欢迎页 ── */}
                                 {chatMessages.length === 0 && (
                                     <div className="welcome">
                                         <h2>🤖 LangGraph Agent</h2>
@@ -1012,8 +1094,9 @@
                                         </p>
                                     </div>
                                 )}
+                                {/* ── 消息列表渲染 ── */}
                                 {chatMessages.map((msg, i) => {
-                                    const isThinking = msg.role === 'thinking';
+                                    const isThinking = msg.role === 'thinking';  // 思考中动画
                                     const cls = msg.role === 'user' ? 'user' : msg.role === 'tool' ? 'tool' : msg.role === 'tool-start' ? 'tool-start' : isThinking ? 'thinking' : 'assistant';
                                     const label = msg.role === 'user' ? '你' : msg.role === 'tool' ? `工具 (${msg.name || ''})` : msg.role === 'tool-start' ? '工具调用' : isThinking ? '' : 'AI';
                                     return (
@@ -1023,9 +1106,10 @@
                                     </div>
                                     );
                                 })}
-                                <div ref={chatEndRef} />
+                                <div ref={chatEndRef} />  {/* 自动滚动锚点 */}
                             </div>
 
+                            {/* ── 底部输入区：模型选择器 + 工具标签 + 输入框 + 运行按钮 ── */}
                             <div className="chat-input-area">
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                                     <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>模型:</span>
@@ -1062,10 +1146,10 @@
                         </div>
                     </div>
 
-                    {/* Log Drawer */}
+                    {/* ══════════════════ LOG DRAWER — 可拖拽执行日志 ══════════════════ */}
                     {logOpen && (
                         <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${logWidth}px`, background: '#fff', borderLeft: '1.5px solid #e2e8f0', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.1)', transition: draggingRef.current ? 'none' : 'width 0.15s ease' }}>
-                            {/* 拖拽手柄 */}
+                            {/* ── 左侧拖拽手柄 ── */}
                             <div
                                 onMouseDown={onDragStart}
                                 style={{
@@ -1075,12 +1159,15 @@
                                 }}
                                 title="拖拽调整宽度"
                             />
+                            {/* ── 标题栏 ── */}
                             <div style={{ padding: '14px 20px', borderBottom: '1.5px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
                                 <span style={{ fontWeight: 700, fontSize: '14px', color: '#1e293b' }}>📋 执行日志</span>
                                 <button className="btn btn-sm" style={{ background: '#e2e8f0', color: '#475569' }}
                                     onClick={() => setLogOpen(false)}>✕ 关闭</button>
                             </div>
+                            {/* ── 日志内容区域 ── */}
                             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.8', background: '#fafbfc' }}>
+                                {/* 空状态 */}
                                 {logs.length === 0 && (
                                     <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
                                         <div style={{ fontSize: '28px', marginBottom: '10px' }}>📭</div>
@@ -1088,6 +1175,7 @@
                                         <div style={{ fontSize: '11px', marginTop: '6px' }}>运行 Agent 后将显示详细执行步骤</div>
                                     </div>
                                 )}
+                                {/* 逐条日志渲染 */}
                                 {logs.map((log, i) => (
                                     <div key={i} style={{
                                         padding: '8px 10px', marginBottom: '6px', borderRadius: '8px',
@@ -1096,23 +1184,27 @@
                                         borderLeft: `4px solid ${log.level === 'error' ? '#dc2626' : log.step.includes('失败') ? '#dc2626' : '#667eea'}`,
                                         boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
                                     }}>
+                                        {/* ── 日志头部：时间戳 + 步骤名 ── */}
                                         <div style={{ display: 'flex', gap: '10px', color: '#94a3b8', fontSize: '10px', fontWeight: 600 }}>
                                             <span>{log.timestamp || ''}</span>
                                             <span style={{ color: log.level === 'error' ? '#dc2626' : '#667eea' }}>{log.step}</span>
                                         </div>
+                                        {/* ── 日志详情（自动检测 JSON 并高亮） ── */}
                                         <LogDetail text={log.detail} />
                                     </div>
                                 ))}
-                                <div ref={logEndRef} />
+                                <div ref={logEndRef} />  {/* 自动滚动锚点 */}
                             </div>
                         </div>
                     )}
 
+                    {/* ══════════════════ Toast ══════════════════ */}
                     <Toast msg={toast.msg} show={toast.show} />
                 </div>
             );
         }
 
+        // ── 将 App 组件挂载到 #root 根节点 ──
         ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
     </script>
 </body>
