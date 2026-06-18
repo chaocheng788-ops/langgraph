@@ -23,178 +23,29 @@ from contextlib import asynccontextmanager  # FastAPI lifespan 上下文
 from fastapi import FastAPI, HTTPException  # Web 框架 + HTTP 异常
 from fastapi.middleware.cors import CORSMiddleware  # 跨域中间件
 from fastapi.responses import StreamingResponse  # SSE 流式响应
-from pydantic import BaseModel  # 请求/响应数据模型
 
-# ── 内部模块 ──
-from app.graph import build_workflow  # Agent 图构建入口
-from app.agent_setup import get_logs, clear_logs, add_log, LoggingCallbackHandler  # 日志 + 回调
-
-# ── LangChain 消息类型 ──
-from langchain_core.messages import (
-    AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
+# ── 内部模块 — 数据模型 ──
+from app.schemas import (
+    ModelConfig, ToolConfig, PromptConfig, AgentRun,
 )
 
+# ── 内部模块 — 存储 ──
+from app.storage import (
+    DATA_DIR, MODELS_FILE, TOOLS_FILE, PROMPT_FILE,
+    _read_json, _write_json,
+)
 
-# ═══════════════════════════════════════════════════════════════
-# Pydantic 数据模型 — 定义请求/响应的结构和默认值
-# ═══════════════════════════════════════════════════════════════
+# ── 内部模块 — 消息转换 ──
+from app.message_converter import _openai_messages_to_langchain
 
-class ModelConfig(BaseModel):
-    """模型配置数据模型。"""
-    name: str                                                  # 用户自定义名称，如 "deepseek-1"
-    model_name: str = "deepseek-v4-pro"                        # API 模型名
-    api_key: str = ""                                          # API 密钥
-    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"  # API 端点
-    temperature: float = 0.7                                   # 生成随机性 (0-2)
-    max_tokens: int = 4096                                     # 最大输出 token 数
+# ── 内部模块 — Agent 构建 ──
+from app.graph import build_workflow  # Agent 图构建入口
 
+# ── 内部模块 — 日志 + 回调 ──
+from app.execution_log import get_logs, clear_logs, add_log, LoggingCallbackHandler
 
-class ToolParameter(BaseModel):
-    """工具参数定义。"""
-    name: str                                                  # 参数名
-    type: str = "string"                                       # 参数类型 (string/number/boolean/array)
-    description: str = ""                                      # 参数说明
-    required: bool = False                                     # 是否必填
-
-
-class ToolConfig(BaseModel):
-    """工具配置数据模型。"""
-    name: str                                                  # 工具名称
-    description: str = ""                                      # 工具功能描述
-    parameters: List[ToolParameter] = []                       # 参数列表
-    url: str = ""                                              # HTTP 工具 API 地址（为空则为内置工具）
-    method: str = "GET"                                        # HTTP 请求方法
-    headers: Dict[str, str] = {}                               # HTTP 自定义请求头
-
-
-class PromptConfig(BaseModel):
-    """提示词配置。"""
-    content: str = "你是一个有用的AI助手。"                    # 系统提示词文本
-
-
-class Message(BaseModel):
-    """OpenAI 兼容的消息格式，用于多轮对话的消息数组。"""
-    role: str                                                  # 角色: system/user/assistant/tool
-    content: str = ""                                          # 消息内容
-    name: Optional[str] = None                                 # 工具名称（tool 消息）或用户名称
-    tool_call_id: Optional[str] = None                         # 工具调用 ID（tool 消息）
-    tool_calls: Optional[List[Dict[str, Any]]] = None          # 工具调用列表（assistant 消息）
-    reasoning_content: Optional[str] = None                    # DeepSeek-R1 思维链
-
-
-class AgentRun(BaseModel):
-    """Agent 执行请求体。"""
-    model_name: str = "deepseek-chat"                          # 模型名
-    api_key: str = ""                                          # API 密钥
-    base_url: str = "https://api.deepseek.com/v1"              # API 端点
-    system_prompt: str = "你是一个有用的AI助手。"              # 系统提示词
-    tools: List[Dict[str, Any]] = []                           # 工具列表
-    max_iterations: int = 10                                   # 最大推理轮数
-    input: str = ""                                            # 用户输入（传统格式）
-    messages: Optional[List[Message]] = None                   # OpenAI 格式消息数组（优先于 input）
-    thread_id: str = ""                                        # 会话 ID，用于 Checkpointer 持久化
-
-
-# ═══════════════════════════════════════════════════════════════
-# 持久化存储 — JSON 文件读写
-# ═══════════════════════════════════════════════════════════════
-
-DATA_DIR = Path(__file__).parent.parent / "data"  # 数据目录: langgraph/data/
-DATA_DIR.mkdir(exist_ok=True)                     # 确保目录存在
-MODELS_FILE = DATA_DIR / "models.json"            # 模型配置文件
-TOOLS_FILE = DATA_DIR / "tools.json"              # 工具配置文件
-PROMPT_FILE = DATA_DIR / "prompt.json"            # 提示词配置文件
-
-
-def _read_json(filepath: Path) -> Any:
-    """
-    安全读取 JSON 文件，文件不存在或解析失败时返回空字典。
-
-    Args:
-        filepath: JSON 文件路径
-
-    Returns:
-        dict | list: 解析后的 JSON 数据，失败时返回 {}
-    """
-    if filepath.exists():
-        try:
-            return json.loads(filepath.read_text(encoding="utf-8"))
-        except Exception:
-            pass  # 文件损坏时静默返回 {}
-    return {}
-
-
-def _write_json(filepath: Path, data: Any) -> None:
-    """
-    将数据写入 JSON 文件，ensure_ascii=False 保留中文。
-
-    Args:
-        filepath: 目标文件路径
-        data: 待写入的数据
-    """
-    filepath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-# ═══════════════════════════════════════════════════════════════
-# OpenAI ↔ LangChain 消息格式转换
-# ═══════════════════════════════════════════════════════════════
-
-# 角色名 → LangChain 消息类映射
-ROLE_TO_LC = {
-    "system": SystemMessage,     # 系统提示
-    "user": HumanMessage,        # 用户输入
-    "assistant": AIMessage,      # AI 回复
-    "tool": ToolMessage,         # 工具返回
-}
-
-
-def _openai_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
-    """
-    将 OpenAI 格式的消息数组转换为 LangChain 消息列表。
-
-    处理字段:
-      - tool_calls（assistant 消息的工具调用）
-      - tool_call_id（tool 消息的工具调用关联 ID）
-      - name（消息发送者名称）
-      - reasoning_content（DeepSeek-R1 思维链）
-
-    Args:
-        messages: 前端传来的 Message 对象列表
-
-    Returns:
-        List[BaseMessage]: LangChain 兼容的消息对象列表
-    """
-    lc_messages = []  # 结果列表
-    for msg in messages:
-        # 根据 role 找到对应的 LangChain 消息类
-        msg_cls = ROLE_TO_LC.get(msg.role)
-        if msg_cls is None:
-            add_log("消息转换", f"未知角色 '{msg.role}'，跳过", "warning")
-            continue
-
-        # ── 构建消息构造参数 ──
-        kwargs = {"content": msg.content}
-
-        if msg.role == "tool":
-            # ToolMessage 需要 tool_call_id 关联到 assistant 的 tool_calls
-            kwargs["tool_call_id"] = msg.tool_call_id or ""
-            if msg.name:
-                kwargs["name"] = msg.name
-        elif msg.role == "assistant" and msg.tool_calls:
-            # AIMessage 有 tool_calls 时携带工具调用信息
-            kwargs["tool_calls"] = msg.tool_calls
-            if msg.reasoning_content:
-                kwargs["reasoning_content"] = msg.reasoning_content
-        elif msg.name:
-            kwargs["name"] = msg.name
-
-        # 传递 reasoning_content（DeepSeek-R1 思维链），避免多次设置
-        if msg.reasoning_content and "reasoning_content" not in kwargs:
-            kwargs["reasoning_content"] = msg.reasoning_content
-
-        lc_messages.append(msg_cls(**kwargs))
-
-    return lc_messages
+# ── LangChain 消息类型 ──
+from langchain_core.messages import HumanMessage
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -685,7 +536,7 @@ async def list_conversations():
     """
     import sqlite3  # 用于直接查询 checkpoints 表
     from pathlib import Path
-    from app.agent_setup import get_checkpointer
+    from app.checkpointer import get_checkpointer
 
     db_path = str(Path(__file__).parent.parent / "data" / "checkpoints.db")
     if not Path(db_path).exists():
@@ -754,7 +605,7 @@ async def get_conversation(thread_id: str):
     Args:
         thread_id: 会话 ID（来自 URL 路径参数）
     """
-    from app.agent_setup import get_checkpointer
+    from app.checkpointer import get_checkpointer
 
     try:
         checkpointer = await get_checkpointer()
@@ -799,7 +650,7 @@ async def delete_conversation(thread_id: str):
       - checkpoints 表中的所有条目
       - writes 表中的所有关联记录
     """
-    from app.agent_setup import get_checkpointer
+    from app.checkpointer import get_checkpointer
 
     try:
         checkpointer = await get_checkpointer()
