@@ -6,8 +6,9 @@
 
 - **可视化前端**：模型配置、工具管理、提示词编辑、实时对话
 - **流式交互**：SSE 实时推送日志和 AI 响应，逐条展示
-- **内置工具集**：6 个内置工具（网页搜索、计算器、摘要、翻译、情感分析、天气查询），支持函数名别名匹配
+- **7 个 Skill**：内置 7 个可路由 Skill（网页搜索、计算器、摘要、翻译、情感分析、天气查询、架构图生成），支持 Function Calling 路由
 - **动态工具**：支持 HTTP API 工具配置，Echo 回退工具兜底
+- **架构图生成**：自然语言描述 → Mermaid 架构图 HTML，自动浏览器打开，支持 /outputs/ 静态访问
 - **多轮对话**：基于 SQLite + AsyncSqliteSaver 持久化上下文，跨请求保持会话
 - **历史管理**：右上角下拉面板查看/加载/删除历史对话
 - **日志抽屉**：可拖拽调整宽度，查看模型请求/响应、工具调用/返回详情
@@ -40,6 +41,18 @@ langgraph/
 │   └── tool_factory.py         # 动态工具工厂（内置/HTTP/Echo 三类工具）
 ├── frontend/
 │   └── index.html              # 单页前端（React + Babel）
+├── skills/                     # Skill 插件目录
+│   ├── architect/              # 架构图生成 Skill
+│   │   ├── skill.json          # Skill 元信息
+│   │   ├── prompt.md           # Mermaid 语法指南
+│   │   └── tool.py             # render_diagram / render_diagram_svg 工具
+│   ├── calculator/             # 数学计算 Skill
+│   ├── search/                 # 网页搜索 Skill
+│   ├── sentiment/              # 情感分析 Skill
+│   ├── summarize/              # 文本摘要 Skill
+│   ├── translate/              # 翻译 Skill
+│   └── weather/                # 天气查询 Skill
+├── outputs/                    # 架构图等生成文件（HTML + .mmd）
 ├── scripts/
 │   ├── start.ps1               # PowerShell 启动脚本
 │   └── start.bat               # Batch 启动脚本
@@ -133,6 +146,20 @@ python main.py
 | `deepseek` | `deepseek-v4-pro` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 
 > 首次使用需在页面左侧「模型」标签页填入你的 API Key。
+
+### 内置 Skill（skills/ 目录）
+
+Skill 支持路由模式：路由 LLM 根据用户意图自动选择最合适的 Skill 加载。
+
+| Skill | 工具函数 | 功能 |
+|--------|---------|------|
+| `architect` | `render_diagram`, `render_diagram_svg` | 架构图生成：自然语言 → Mermaid 图表 HTML，自动浏览器打开 |
+| `calculator` | `calculator` | 安全数学表达式计算 |
+| `search` | `search_web` | 模拟网页搜索 |
+| `sentiment` | `analyze_sentiment` | 情感分析（积极/消极/中性） |
+| `summarize` | `summarize` | 文本摘要 |
+| `translate` | `translate` | 多语言翻译 |
+| `weather` | `get_weather` | 天气查询（8 个内置城市真实数据） |
 
 ### 内置工具（builtin_tools.py）
 

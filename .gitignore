@@ -19,6 +19,7 @@ Thumbs.db
 # Project data
 workflows/
 data/
+outputs/
 *.log
 
 # Env
