@@ -18,7 +18,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.graph import build_workflow
-from app.agent_setup import get_logs, clear_logs, add_log, LoggingCallbackHandler
+from app.execution_log import get_logs, clear_logs, add_log, LoggingCallbackHandler
+from app.skill_router import select_relevant_skills
 
 from langchain_core.messages import (
     AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
@@ -54,6 +55,22 @@ class ToolConfig(BaseModel):
     headers: Dict[str, str] = {}
 
 
+class SkillToolConfig(BaseModel):
+    name: str
+    description: str = ""
+    parameters: List[ToolParameter] = []
+    url: str = ""
+    method: str = "GET"
+    headers: Dict[str, str] = {}
+
+
+class SkillConfig(BaseModel):
+    name: str
+    description: str = ""
+    tools: List[SkillToolConfig] = []
+    prompt: str = ""
+
+
 class PromptConfig(BaseModel):
     content: str = "你是一个有用的AI助手。"
 
@@ -74,6 +91,8 @@ class AgentRun(BaseModel):
     base_url: str = "https://api.deepseek.com/v1"
     system_prompt: str = "你是一个有用的AI助手。"
     tools: List[Dict[str, Any]] = []
+    skills: List[str] = []  # 技能名称列表，从 skills.json 聚合工具和提示词
+    auto_route: bool = False  # 是否启用 LLM 智能路由，自动选择相关技能
     max_iterations: int = 10
     input: str = ""
     messages: Optional[List[Message]] = None  # OpenAI 格式消息数组（优先于 input）
@@ -88,6 +107,7 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 MODELS_FILE = DATA_DIR / "models.json"
 TOOLS_FILE = DATA_DIR / "tools.json"
+SKILLS_FILE = DATA_DIR / "skills.json"
 PROMPT_FILE = DATA_DIR / "prompt.json"
 
 
@@ -145,6 +165,49 @@ def _openai_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
         lc_messages.append(msg_cls(**kwargs))
 
     return lc_messages
+
+
+# ============================================================
+# Skills 解析 — 从技能名列表聚合工具和提示词
+# ============================================================
+
+def _resolve_skills(skill_names: List[str]) -> tuple:
+    """
+    根据技能名列表从 skills.json 加载技能，聚合工具列表和提示词。
+
+    Returns:
+        (tools_list, merged_prompt) — tools_list 是工具配置列表，merged_prompt 是合并的提示词
+    """
+    if not skill_names:
+        return [], ""
+
+    skills_data = _read_json(SKILLS_FILE)
+    all_tools = []
+    prompts = []
+
+    for sname in skill_names:
+        skill = skills_data.get(sname)
+        if not skill:
+            continue
+        # 收集技能中的工具
+        for tool in skill.get("tools", []):
+            tool_entry = {
+                "name": tool.get("name", ""),
+                "description": tool.get("description", ""),
+                "parameters": tool.get("parameters_schema", tool.get("parameters", {})),
+            }
+            if tool.get("url"):
+                tool_entry["url"] = tool["url"]
+                tool_entry["method"] = tool.get("method", "GET")
+                tool_entry["headers"] = tool.get("headers", {})
+            all_tools.append(tool_entry)
+        # 收集技能提示词
+        skill_prompt = skill.get("prompt", "")
+        if skill_prompt:
+            prompts.append(f"## {sname}\n{skill_prompt}")
+
+    merged_prompt = "\n\n".join(prompts) if prompts else ""
+    return all_tools, merged_prompt
 
 
 # ============================================================
@@ -249,6 +312,46 @@ async def delete_tool(name: str):
 
 
 # ============================================================
+# Skill Config CRUD
+# ============================================================
+
+@app.get("/skills")
+async def list_skills():
+    return _read_json(SKILLS_FILE)
+
+
+@app.post("/skills")
+async def save_skill(skill: SkillConfig):
+    skills = _read_json(SKILLS_FILE)
+    skill_dict = skill.model_dump()
+    # 为每个工具生成 parameters_schema
+    for tool in skill_dict.get("tools", []):
+        params = tool.get("parameters", [])
+        tool["parameters_schema"] = {
+            "type": "object",
+            "properties": {p["name"]: {"type": p["type"], "description": p["description"]} for p in params},
+            "required": [p["name"] for p in params if p.get("required")],
+        }
+        if not tool.get("url"):
+            tool.pop("url", None)
+            tool.pop("method", None)
+            tool.pop("headers", None)
+    skills[skill.name] = skill_dict
+    _write_json(SKILLS_FILE, skills)
+    return {"message": f"技能 '{skill.name}' 已保存", "name": skill.name}
+
+
+@app.delete("/skills/{name}")
+async def delete_skill(name: str):
+    skills = _read_json(SKILLS_FILE)
+    if name not in skills:
+        raise HTTPException(status_code=404, detail="技能不存在")
+    del skills[name]
+    _write_json(SKILLS_FILE, skills)
+    return {"message": f"技能 '{name}' 已删除"}
+
+
+# ============================================================
 # Prompt Config
 # ============================================================
 
@@ -296,12 +399,33 @@ async def run_agent(run: AgentRun):
             user_input = run.input
             add_log("执行开始", f"传统格式 | 输入: {run.input[:50]}... | 模型: {run.model_name} | 工具数: {len(run.tools)}")
 
+        # ── 解析 skills（优先于 tools）──
+        resolved_tools = run.tools
+        if run.auto_route and user_input:
+            # LLM 智能路由：根据用户意图自动选择相关技能
+            all_skills = _read_json(SKILLS_FILE)
+            if all_skills:
+                routed_skills = select_relevant_skills(
+                    user_input, all_skills,
+                    api_key=run.api_key, base_url=run.base_url
+                )
+                if routed_skills:
+                    skill_tools, _ = _resolve_skills(routed_skills)
+                    if skill_tools:
+                        resolved_tools = skill_tools
+                        add_log("🧠 智能路由", f"从 {len(all_skills)} 个技能中自动选择: {routed_skills}")
+        elif run.skills:
+            skill_tools, _ = _resolve_skills(run.skills)
+            if skill_tools:
+                resolved_tools = skill_tools
+                add_log("技能加载", f"从 {len(run.skills)} 个技能中加载 {len(skill_tools)} 个工具")
+
         config = {
             "model_name": run.model_name,
             "api_key": run.api_key,
             "base_url": run.base_url,
             "system_prompt": run.system_prompt,
-            "tools": run.tools,
+            "tools": resolved_tools,
             "max_iterations": run.max_iterations,
         }
         add_log("构建图", f"system_prompt: {run.system_prompt[:40]}...")
@@ -331,7 +455,7 @@ async def run_agent(run: AgentRun):
             f"API地址: {run.base_url}\n"
             f"API Key: {run.api_key[:12]}...{run.api_key[-4:] if len(run.api_key) > 16 else '****'}\n"
             f"系统提示词: {run.system_prompt[:80]}{'...' if len(run.system_prompt) > 80 else ''}\n"
-            f"工具列表: {[t.get('name', '?') for t in run.tools] if run.tools else '(无)'}\n"
+            f"工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n"
             f"最大迭代: {run.max_iterations}\n"
             f"输入消息数: {len(input_messages)}"
         )
@@ -418,12 +542,31 @@ async def run_agent_stream(run: AgentRun):
         input_messages = [HumanMessage(content=run.input or "")]
         user_input = run.input
 
+    # ── 解析 skills（优先于 tools）──
+    resolved_tools = run.tools
+    if run.auto_route and user_input:
+        # LLM 智能路由：根据用户意图自动选择相关技能
+        all_skills = _read_json(SKILLS_FILE)
+        if all_skills:
+            routed_skills = select_relevant_skills(
+                user_input, all_skills,
+                api_key=run.api_key, base_url=run.base_url
+            )
+            if routed_skills:
+                skill_tools, _ = _resolve_skills(routed_skills)
+                if skill_tools:
+                    resolved_tools = skill_tools
+    elif run.skills:
+        skill_tools, _ = _resolve_skills(run.skills)
+        if skill_tools:
+            resolved_tools = skill_tools
+
     config = {
         "model_name": run.model_name,
         "api_key": run.api_key,
         "base_url": run.base_url,
         "system_prompt": run.system_prompt,
-        "tools": run.tools,
+        "tools": resolved_tools,
         "max_iterations": run.max_iterations,
     }
     graph = await build_workflow(config)
@@ -442,9 +585,9 @@ async def run_agent_stream(run: AgentRun):
         try:
             # ── 初始日志 ──
             init_logs = [
-                {"step": "执行开始", "detail": f"传统格式 | 输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(run.tools)}", "level": "info"},
+                {"step": "执行开始", "detail": f"传统格式 | 输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
                 {"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"},
-                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in run.tools] if run.tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
+                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
             ]
             for l in init_logs:
                 l["timestamp"] = _now()
@@ -483,7 +626,7 @@ async def run_agent_stream(run: AgentRun):
                                 msgs_json.append(entry)
 
                     req_body = {"model": model_name, "temperature": temperature, "messages": msgs_json}
-                    if run.tools: req_body["tools"] = run.tools
+                    if resolved_tools: req_body["tools"] = resolved_tools
 
                     yield _sse({"type": "log", "timestamp": _now(), "step": f"🔵 模型请求 #{model_call_count}",
                         "detail": json.dumps(req_body, ensure_ascii=False, indent=2, default=str)[:5000], "level": "info"})

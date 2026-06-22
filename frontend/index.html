@@ -286,13 +286,13 @@
             const [tab, setTab] = useState('models');
             // ── 配置数据 ──
             const [models, setModels] = useState({});          // {模型名: 配置对象}
-            const [tools, setTools] = useState({});            // {工具名: 配置对象}
-            const [toolEnabled, setToolEnabled] = useState({}); // {工具名: true/false}
+            const [skills, setSkills] = useState({});           // {技能名: 配置对象}
+            const [skillEnabled, setSkillEnabled] = useState({}); // {技能名: true/false}
             const [prompt, setPrompt] = useState('');          // 系统提示词文本
             const [toast, setToast] = useState({ msg: '', show: false });  // Toast 状态
             // ── 编辑状态 ──
             const [editingModel, setEditingModel] = useState(null);  // 正在编辑的模型
-            const [editingTool, setEditingTool] = useState(null);    // 正在编辑的工具
+            const [editingSkill, setEditingSkill] = useState(null);  // 正在编辑的技能
             // ── 聊天状态 ──
             const [chatMessages, setChatMessages] = useState([]);  // 消息列表 [{role, content}]
             const [chatInput, setChatInput] = useState('');         // 输入框文本
@@ -308,6 +308,8 @@
             const [logWidth, setLogWidth] = useState(440);  // 抽屉宽度（像素）
             // ── 会话 ID（Checkpointer 关联），随机生成 ──
             const [threadId, setThreadId] = useState(() => 'session-' + Math.random().toString(36).slice(2, 10));
+            // ── 智能路由开关 ──
+            const [autoRoute, setAutoRoute] = useState(false);
             // ── 历史对话 ──
             const [conversations, setConversations] = useState([]);          // 对话列表
             const [loadingConversation, setLoadingConversation] = useState(false);  // 加载中
@@ -404,12 +406,12 @@
                         setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
                     }
                 }).catch(() => {});
-                api('/tools').then(t => {
-                    setTools(t);
-                    // 默认全部工具开启
+                api('/skills').then(s => {
+                    setSkills(s);
+                    // 默认全部技能开启
                     const allOn = {};
-                    Object.keys(t).forEach(k => allOn[k] = true);
-                    setToolEnabled(allOn);
+                    Object.keys(s).forEach(k => allOn[k] = true);
+                    setSkillEnabled(allOn);
                 }).catch(() => {});
                 api('/prompt').then(d => setPrompt(d.content)).catch(() => {});
                 loadConversations();  // 加载历史对话列表
@@ -489,28 +491,28 @@
             }, [showToast, selectedModel]);
 
             // ═══════════════════════════════════════════════════════════════
-            // 工具 CRUD — 增删改
+            // 技能 CRUD — 增删改
             // ═══════════════════════════════════════════════════════════════
-            const saveTool = useCallback(async (t) => {
+            const saveSkill = useCallback(async (s) => {
                 try {
-                    await api('/tools', { method: 'POST', body: JSON.stringify(t) });
-                    const updated = await api('/tools');
-                    setTools(updated);
-                    setToolEnabled({});  // 重置开关状态
-                    setEditingTool(null);
-                    showToast('✅ 工具已保存');
+                    await api('/skills', { method: 'POST', body: JSON.stringify(s) });
+                    const updated = await api('/skills');
+                    setSkills(updated);
+                    setSkillEnabled({});  // 重置开关状态
+                    setEditingSkill(null);
+                    showToast('✅ 技能已保存');
                 } catch (err) {
                     showToast('❌ ' + err.message);
                 }
             }, [showToast]);
 
-            const deleteTool = useCallback(async (name) => {
+            const deleteSkill = useCallback(async (name) => {
                 try {
-                    await api(`/tools/${encodeURIComponent(name)}`, { method: 'DELETE' });
-                    const updated = await api('/tools');
-                    setTools(updated);
-                    setToolEnabled({});
-                    showToast('🗑️ 工具已删除');
+                    await api(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    const updated = await api('/skills');
+                    setSkills(updated);
+                    setSkillEnabled({});
+                    showToast('🗑️ 技能已删除');
                 } catch (err) {
                     showToast('❌ ' + err.message);
                 }
@@ -554,7 +556,8 @@
                             api_key: selectedApiKey,          // API 密钥
                             base_url: selectedBaseUrl,        // API 端点
                             system_prompt: prompt,            // 系统提示词
-                            tools: selectedTools,             // 启用的工具列表
+                            skills: autoRoute ? [] : enabledSkills.map(([n]) => n),  // 智能路由时不传 skills
+                            auto_route: autoRoute,            // 启用 LLM 智能路由
                             max_iterations: 10,               // 最大推理轮数
                             input: userMsg.content,           // 用户输入
                             thread_id: threadId,              // 会话 ID
@@ -621,7 +624,7 @@
                 }
                 setRunning(false);          // 恢复可输入状态
                 loadConversations();         // 刷新历史对话列表（新对话自动出现）
-            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations]);
+            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations, enabledSkills, autoRoute]);
 
             // ── handleKeyDown: Enter 发送，Shift+Enter 换行 ──
             const handleKeyDown = useCallback((e) => {
@@ -651,36 +654,35 @@
                 }
             }, [models]);
 
-            // ── toggleTool: 切换工具的启用/禁用状态 ──
-            const toggleTool = useCallback((toolName) => {
-                setToolEnabled(prev => ({ ...prev, [toolName]: !prev[toolName] }));
+            // ── toggleSkill: 切换技能的启用/禁用状态 ──
+            const toggleSkill = useCallback((skillName) => {
+                setSkillEnabled(prev => ({ ...prev, [skillName]: !prev[skillName] }));
             }, []);
 
-            // ── selectedTools: 计算当前启用的工具列表（用于执行时传给后端） ──
-            const selectedTools = Object.entries(tools)
-                .filter(([name]) => toolEnabled[name])  // 只保留开关为 on 的
-                .map(([name, t]) => {
+            // ── selectedTools: 从启用的技能中聚合所有工具列表 ──
+            const enabledSkills = Object.entries(skills)
+                .filter(([name]) => skillEnabled[name]);
+            const activeSkillCount = enabledSkills.length;
+            const selectedTools = enabledSkills
+                .flatMap(([name, s]) => (s.tools || []).map(t => {
                     const tool = {
                         name: t.name,
                         description: t.description,
                         parameters: t.parameters_schema || t.parameters,
                     };
-                    // HTTP 工具需要携带 url/method/headers
                     if (t.url) {
                         tool.url = t.url;
                         tool.method = t.method || 'GET';
                         tool.headers = t.headers || {};
                     }
                     return tool;
-                });
-
-            const activeToolCount = selectedTools.length;  // 活动工具数量
+                }));
 
             // ═══════════════════════════════════════════════════════════════
             // RENDER — 整个页面 JSX
             // ═══════════════════════════════════════════════════════════════
             const modelList = Object.values(models);  // 模型数组
-            const toolList = Object.values(tools);      // 工具数组
+            const skillList = Object.values(skills);   // 技能数组
 
             return (
                 <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -696,8 +698,8 @@
                                 模型: {selectedModel ? (selectedModelName || selectedModel) : '未选择'}
                             </span>
                             {/* ── 工具数量徽章 ── */}
-                            {activeToolCount > 0 && (
-                                <span className="status-badge">{activeToolCount} 个工具</span>
+                            {activeSkillCount > 0 && (
+                                <span className="status-badge">{activeSkillCount} 个技能</span>
                             )}
                             {/* ── 新会话按钮：重置 chatMessages/logs/threadId ── */}
                             <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }}
@@ -774,8 +776,8 @@
                                 <div className={`sidebar-tab ${tab === 'models' ? 'active' : ''}`} onClick={() => setTab('models')}>
                                     <span className="icon">🧠</span> 模型
                                 </div>
-                                <div className={`sidebar-tab ${tab === 'tools' ? 'active' : ''}`} onClick={() => setTab('tools')}>
-                                    <span className="icon">🔧</span> 工具
+                                <div className={`sidebar-tab ${tab === 'skills' ? 'active' : ''}`} onClick={() => setTab('skills')}>
+                                    <span className="icon">🛠️</span> 技能
                                 </div>
                                 <div className={`sidebar-tab ${tab === 'prompt' ? 'active' : ''}`} onClick={() => setTab('prompt')}>
                                     <span className="icon">📝</span> 提示词
@@ -864,181 +866,231 @@
                                 )}
 
                                 {/* ═════ TOOLS TAB ═════ */}
-                                {tab === 'tools' && (
+                                {tab === 'skills' && (
                                     <div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>工具配置</span>
+                                            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>技能配置</span>
                                             <button className="btn btn-primary btn-sm"
-                                                onClick={() => setEditingTool({ name: '', description: '', url: '', method: 'GET', headers: {}, parameters: [{ name: 'query', type: 'string', description: '', required: true }], _existing: false })}>
+                                                onClick={() => setEditingSkill({ name: '', description: '', tools: [], prompt: '', _existing: false })}>
                                                 + 新增</button>
                                         </div>
 
-                                        {toolList.length === 0 && (
+                                        {skillList.length === 0 && (
                                             <div className="empty-state">
-                                                <div className="big-icon">🔧</div>
-                                                <div>暂无工具配置</div>
-                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加工具</div>
+                                                <div className="big-icon">🛠️</div>
+                                                <div>暂无技能配置</div>
+                                                <div style={{ marginTop: '6px', fontSize: '11px' }}>点击上方「新增」添加技能</div>
                                             </div>
                                         )}
 
-                                        {toolList.map(t => {
-                                            const isOn = !!toolEnabled[t.name];  // 当前工具是否启用
+                                        {skillList.map(s => {
+                                            const isOn = !!skillEnabled[s.name];
+                                            const toolCount = (s.tools || []).length;
                                             return (
-                                            <div key={t.name} className={`config-item ${isOn ? 'selected' : ''}`}>
+                                            <div key={s.name} className={`config-item ${isOn ? 'selected' : ''}`}>
                                                 <div className="config-item-header">
                                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        {/* ── 开关按钮（CSS 实现的 toggle switch） ── */}
-                                                        <div onClick={() => toggleTool(t.name)}
+                                                        <div onClick={() => toggleSkill(s.name)}
                                                             style={{ width: '34px', height: '20px', borderRadius: '10px', background: isOn ? '#667eea' : '#cbd5e1', position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0 }}>
                                                             <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: '2px', left: isOn ? '16px' : '2px', transition: 'all 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
                                                         </div>
                                                         <div>
-                                                            <span className="config-item-name">{t.name}</span>
-                                                            <div className="config-item-desc">{t.description || '无描述'}</div>
+                                                            <span className="config-item-name">{s.name}</span>
+                                                            <div className="config-item-desc">{s.description || '无描述'} · {toolCount} 个工具</div>
                                                         </div>
                                                     </div>
                                                     <div className="config-item-actions">
                                                         <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
-                                                            onClick={(e) => { e.stopPropagation(); setEditingTool({ ...t, _existing: true }); }}>编辑</button>
+                                                            onClick={(e) => { e.stopPropagation(); setEditingSkill({ ...s, _existing: true }); }}>编辑</button>
                                                         <button className="btn btn-sm btn-danger" style={{ background: '#fee2e2', color: '#dc2626' }}
-                                                            onClick={(e) => { e.stopPropagation(); deleteTool(t.name); }}>删除</button>
+                                                            onClick={(e) => { e.stopPropagation(); deleteSkill(s.name); }}>删除</button>
                                                     </div>
                                                 </div>
                                             </div>
                                             );
                                         })}
 
-                                        {/* ── 工具编辑/新增表单（含参数编辑器 + API 接口配置） ── */}
-                                        {editingTool && (
+                                        {/* ── 技能编辑/新增表单 ── */}
+                                        {editingSkill && (
                                             <div className="config-detail">
-                                                <div className="config-detail-title">{editingTool.name ? '编辑工具' : '新增工具'}</div>
+                                                <div className="config-detail-title">{editingSkill.name ? '编辑技能' : '新增技能'}</div>
                                                 <div className="form-group">
-                                                    <label>工具名称</label>
-                                                    <input className="form-control" value={editingTool.name}
-                                                        onChange={e => setEditingTool({ ...editingTool, name: e.target.value })}
-                                                        placeholder="例如: get_weather" disabled={editingTool._existing} />
+                                                    <label>技能名称</label>
+                                                    <input className="form-control" value={editingSkill.name}
+                                                        onChange={e => setEditingSkill({ ...editingSkill, name: e.target.value })}
+                                                        placeholder="例如: weather_skill" disabled={editingSkill._existing} />
                                                 </div>
                                                 <div className="form-group">
                                                     <label>描述</label>
-                                                    <textarea className="form-control" rows={2} value={editingTool.description}
-                                                        onChange={e => setEditingTool({ ...editingTool, description: e.target.value })}
-                                                        placeholder="工具功能描述，LLM 据此判断何时调用" />
+                                                    <textarea className="form-control" rows={2} value={editingSkill.description}
+                                                        onChange={e => setEditingSkill({ ...editingSkill, description: e.target.value })}
+                                                        placeholder="技能功能描述" />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>技能提示词（可选，执行时自动追加到系统提示词）</label>
+                                                    <textarea className="form-control" rows={3} value={editingSkill.prompt || ''}
+                                                        onChange={e => setEditingSkill({ ...editingSkill, prompt: e.target.value })}
+                                                        placeholder="当用户询问天气时，请使用 get_weather 工具..." />
                                                 </div>
 
-                                                {/* API Endpoint 配置区域 */}
-                                                <div style={{ marginTop: '8px', marginBottom: '8px', padding: '10px', background: '#f1f5f9', borderRadius: '8px', border: '1.5px solid #e2e8f0' }}>
-                                                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 500 }}>API 接口配置（留空则使用内置模拟）</div>
-                                                    <div className="form-group">
-                                                        <label>接口地址 (URL)</label>
-                                                        <input className="form-control" value={editingTool.url || ''}
-                                                            onChange={e => setEditingTool({ ...editingTool, url: e.target.value })}
-                                                            placeholder="例如: https://api.example.com/weather" />
-                                                    </div>
-                                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                                        <div className="form-group" style={{ flex: '0 0 100px' }}>
-                                                            <label>请求方式</label>
-                                                            <select className="form-control" value={editingTool.method || 'GET'}
-                                                                onChange={e => setEditingTool({ ...editingTool, method: e.target.value })}>
-                                                                <option value="GET">GET</option>
-                                                                <option value="POST">POST</option>
-                                                                <option value="PUT">PUT</option>
-                                                                <option value="DELETE">DELETE</option>
-                                                            </select>
-                                                        </div>
-                                                        <div className="form-group" style={{ flex: 1 }}>
-                                                            <label>Headers (JSON 格式)</label>
-                                                            <input className="form-control" value={editingTool.headers ? (typeof editingTool.headers === 'string' ? editingTool.headers : JSON.stringify(editingTool.headers)) : ''}
-                                                                onChange={e => {
-                                                                    let h = e.target.value;
-                                                                    try { h = JSON.parse(h); } catch { /* 解析失败保留原始字符串 */ }
-                                                                    setEditingTool({ ...editingTool, headers: h });
-                                                                }}
-                                                                placeholder='{"Authorization": "Bearer xxx"}' />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* ── 请求参数编辑器 ── */}
-                                                <div style={{ marginTop: '10px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>
-                                                        <span>请求参数</span>
+                                                {/* ── 技能内工具列表 ── */}
+                                                <div style={{ marginTop: '12px', borderTop: '1.5px solid #e2e8f0', paddingTop: '10px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <span style={{ fontSize: '12px', color: '#475569', fontWeight: 600 }}>工具列表 ({(editingSkill.tools || []).length})</span>
                                                         <button className="btn btn-sm" style={{ background: '#e2e8f0', color: '#475569' }}
-                                                            onClick={() => setEditingTool({
-                                                                ...editingTool,
-                                                                parameters: [...editingTool.parameters, { name: '', type: 'string', description: '', required: false }]
-                                                            })}>+ 添加参数</button>
+                                                            onClick={() => setEditingSkill({
+                                                                ...editingSkill,
+                                                                tools: [...(editingSkill.tools || []), { name: '', description: '', url: '', method: 'GET', headers: {}, parameters: [{ name: 'query', type: 'string', description: '', required: true }] }]
+                                                            })}>+ 添加工具</button>
                                                     </div>
-                                                    <div className="params-header">
-                                                        <span className="pn">名称</span>
-                                                        <span className="pt">类型</span>
-                                                        <span className="pd">描述</span>
-                                                        <span className="pr">必填</span>
-                                                    </div>
-                                                    {editingTool.parameters.map((p, idx) => (
-                                                        <div key={idx} className="param-row">
-                                                            <input className="param-name" value={p.name}
-                                                                onChange={e => {
-                                                                    const params = [...editingTool.parameters];
-                                                                    params[idx] = { ...params[idx], name: e.target.value };
-                                                                    setEditingTool({ ...editingTool, parameters: params });
-                                                                }} placeholder="参数名" />
-                                                            <select className="param-type" value={p.type}
-                                                                onChange={e => {
-                                                                    const params = [...editingTool.parameters];
-                                                                    params[idx] = { ...params[idx], type: e.target.value };
-                                                                    setEditingTool({ ...editingTool, parameters: params });
-                                                                }}>
-                                                                <option value="string">string</option>
-                                                                <option value="number">number</option>
-                                                                <option value="boolean">boolean</option>
-                                                                <option value="array">array</option>
-                                                            </select>
-                                                            <input className="param-desc" value={p.description}
-                                                                onChange={e => {
-                                                                    const params = [...editingTool.parameters];
-                                                                    params[idx] = { ...params[idx], description: e.target.value };
-                                                                    setEditingTool({ ...editingTool, parameters: params });
-                                                                }} placeholder="描述" />
-                                                            <label className="param-req" style={{ cursor: 'pointer', fontSize: '11px' }}>
-                                                                <input type="checkbox" checked={p.required}
-                                                                    onChange={e => {
-                                                                        const params = [...editingTool.parameters];
-                                                                        params[idx] = { ...params[idx], required: e.target.checked };
-                                                                        setEditingTool({ ...editingTool, parameters: params });
-                                                                    }} />
-                                                            </label>
-                                                            {editingTool.parameters.length > 1 && (
-                                                                <button style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}
+
+                                                    {(editingSkill.tools || []).map((tool, tIdx) => (
+                                                        <div key={tIdx} style={{ padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1.5px solid #e2e8f0', marginBottom: '8px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                                <span style={{ fontSize: '11px', color: '#667eea', fontWeight: 600 }}>工具 #{tIdx + 1}</span>
+                                                                <button style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '14px' }}
                                                                     onClick={() => {
-                                                                        const params = editingTool.parameters.filter((_, i) => i !== idx);
-                                                                        setEditingTool({ ...editingTool, parameters: params });
+                                                                        const tools = editingSkill.tools.filter((_, i) => i !== tIdx);
+                                                                        setEditingSkill({ ...editingSkill, tools });
                                                                     }}>×</button>
-                                                            )}
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>工具名称</label>
+                                                                <input className="form-control" value={tool.name}
+                                                                    onChange={e => {
+                                                                        const tools = [...editingSkill.tools];
+                                                                        tools[tIdx] = { ...tools[tIdx], name: e.target.value };
+                                                                        setEditingSkill({ ...editingSkill, tools });
+                                                                    }} placeholder="例如: get_weather" />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>描述</label>
+                                                                <textarea className="form-control" rows={2} value={tool.description}
+                                                                    onChange={e => {
+                                                                        const tools = [...editingSkill.tools];
+                                                                        tools[tIdx] = { ...tools[tIdx], description: e.target.value };
+                                                                        setEditingSkill({ ...editingSkill, tools });
+                                                                    }} placeholder="工具功能描述" />
+                                                            </div>
+
+                                                            {/* API 配置 */}
+                                                            <div style={{ marginTop: '6px', padding: '8px', background: '#f1f5f9', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                                <div style={{ fontSize: '10px', color: '#64748b', marginBottom: '4px', fontWeight: 500 }}>API 接口配置（留空则使用内置模拟）</div>
+                                                                <div className="form-group">
+                                                                    <label>接口地址 (URL)</label>
+                                                                    <input className="form-control" value={tool.url || ''}
+                                                                        onChange={e => {
+                                                                            const tools = [...editingSkill.tools];
+                                                                            tools[tIdx] = { ...tools[tIdx], url: e.target.value };
+                                                                            setEditingSkill({ ...editingSkill, tools });
+                                                                        }} placeholder="https://api.example.com/weather" />
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                                    <div className="form-group" style={{ flex: '0 0 90px' }}>
+                                                                        <label>请求方式</label>
+                                                                        <select className="form-control" value={tool.method || 'GET'}
+                                                                            onChange={e => {
+                                                                                const tools = [...editingSkill.tools];
+                                                                                tools[tIdx] = { ...tools[tIdx], method: e.target.value };
+                                                                                setEditingSkill({ ...editingSkill, tools });
+                                                                            }}>
+                                                                            <option value="GET">GET</option>
+                                                                            <option value="POST">POST</option>
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="form-group" style={{ flex: 1 }}>
+                                                                        <label>Headers (JSON)</label>
+                                                                        <input className="form-control" value={tool.headers ? (typeof tool.headers === 'string' ? tool.headers : JSON.stringify(tool.headers)) : ''}
+                                                                            onChange={e => {
+                                                                                let h = e.target.value;
+                                                                                try { h = JSON.parse(h); } catch {}
+                                                                                const tools = [...editingSkill.tools];
+                                                                                tools[tIdx] = { ...tools[tIdx], headers: h };
+                                                                                setEditingSkill({ ...editingSkill, tools });
+                                                                            }} placeholder='{"Authorization": "Bearer xxx"}' />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 参数编辑器 */}
+                                                            <div style={{ marginTop: '8px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>
+                                                                    <span>请求参数</span>
+                                                                    <button className="btn btn-sm" style={{ background: '#e2e8f0', color: '#475569', fontSize: '10px' }}
+                                                                        onClick={() => {
+                                                                            const tools = [...editingSkill.tools];
+                                                                            tools[tIdx] = { ...tools[tIdx], parameters: [...(tools[tIdx].parameters || []), { name: '', type: 'string', description: '', required: false }] };
+                                                                            setEditingSkill({ ...editingSkill, tools });
+                                                                        }}>+ 添加参数</button>
+                                                                </div>
+                                                                <div className="params-header">
+                                                                    <span className="pn">名称</span>
+                                                                    <span className="pt">类型</span>
+                                                                    <span className="pd">描述</span>
+                                                                    <span className="pr">必填</span>
+                                                                </div>
+                                                                {(tool.parameters || []).map((p, pIdx) => (
+                                                                    <div key={pIdx} className="param-row">
+                                                                        <input className="param-name" value={p.name}
+                                                                            onChange={e => {
+                                                                                const tools = [...editingSkill.tools];
+                                                                                const params = [...tools[tIdx].parameters];
+                                                                                params[pIdx] = { ...params[pIdx], name: e.target.value };
+                                                                                tools[tIdx] = { ...tools[tIdx], parameters: params };
+                                                                                setEditingSkill({ ...editingSkill, tools });
+                                                                            }} placeholder="参数名" />
+                                                                        <select className="param-type" value={p.type}
+                                                                            onChange={e => {
+                                                                                const tools = [...editingSkill.tools];
+                                                                                const params = [...tools[tIdx].parameters];
+                                                                                params[pIdx] = { ...params[pIdx], type: e.target.value };
+                                                                                tools[tIdx] = { ...tools[tIdx], parameters: params };
+                                                                                setEditingSkill({ ...editingSkill, tools });
+                                                                            }}>
+                                                                            <option value="string">string</option>
+                                                                            <option value="number">number</option>
+                                                                            <option value="boolean">boolean</option>
+                                                                            <option value="array">array</option>
+                                                                        </select>
+                                                                        <input className="param-desc" value={p.description}
+                                                                            onChange={e => {
+                                                                                const tools = [...editingSkill.tools];
+                                                                                const params = [...tools[tIdx].parameters];
+                                                                                params[pIdx] = { ...params[pIdx], description: e.target.value };
+                                                                                tools[tIdx] = { ...tools[tIdx], parameters: params };
+                                                                                setEditingSkill({ ...editingSkill, tools });
+                                                                            }} placeholder="描述" />
+                                                                        <label className="param-req" style={{ cursor: 'pointer', fontSize: '11px' }}>
+                                                                            <input type="checkbox" checked={p.required}
+                                                                                onChange={e => {
+                                                                                    const tools = [...editingSkill.tools];
+                                                                                    const params = [...tools[tIdx].parameters];
+                                                                                    params[pIdx] = { ...params[pIdx], required: e.target.checked };
+                                                                                    tools[tIdx] = { ...tools[tIdx], parameters: params };
+                                                                                    setEditingSkill({ ...editingSkill, tools });
+                                                                                }} />
+                                                                        </label>
+                                                                        {(tool.parameters || []).length > 1 && (
+                                                                            <button style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: '14px', padding: '0 4px' }}
+                                                                                onClick={() => {
+                                                                                    const tools = [...editingSkill.tools];
+                                                                                    const params = tools[tIdx].parameters.filter((_, i) => i !== pIdx);
+                                                                                    tools[tIdx] = { ...tools[tIdx], parameters: params };
+                                                                                    setEditingSkill({ ...editingSkill, tools });
+                                                                                }}>×</button>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
 
-                                                {/* ── 工具 JSON 结构预览 ── */}
-                                                <div style={{ marginTop: '8px', padding: '10px', background: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#94a3b8', maxHeight: '140px', overflow: 'auto', fontFamily: 'monospace' }}>
-                                                    <div>tools 结构预览{editingTool.url ? ' (HTTP工具)' : ' (本地工具)'}:</div>
-                                                    {JSON.stringify({
-                                                        name: editingTool.name || 'example_tool',
-                                                        description: editingTool.description || '...',
-                                                        url: editingTool.url || '(本地执行)',
-                                                        method: editingTool.method || 'GET',
-                                                        parameters: {
-                                                            type: 'object',
-                                                            properties: Object.fromEntries(editingTool.parameters.map(p => [p.name || 'param', { type: p.type, description: p.description }])),
-                                                            required: editingTool.parameters.filter(p => p.required).map(p => p.name),
-                                                        }
-                                                    }, null, 2)}
-                                                </div>
-
                                                 <div className="btn-group">
                                                     <button className="btn btn-sm" style={{ background: '#f1f5f9', color: '#475569' }}
-                                                        onClick={() => setEditingTool(null)}>取消</button>
+                                                        onClick={() => setEditingSkill(null)}>取消</button>
                                                     <button className="btn btn-primary btn-sm"
-                                                        onClick={() => saveTool(editingTool)} disabled={!editingTool.name}>保存</button>
+                                                        onClick={() => saveSkill(editingSkill)} disabled={!editingSkill.name}>保存</button>
                                                 </div>
                                             </div>
                                         )}
@@ -1089,7 +1141,7 @@
                                             在下方输入问题开始对话<br /><br />
                                             <span style={{ fontSize: '11px', color: '#3a4a6a' }}>
                                                 当前: {selectedModel || '未选择模型'}
-                                                {activeToolCount > 0 ? ` · ${activeToolCount} 个工具` : ''}
+                                                {activeSkillCount > 0 ? ` · ${activeSkillCount} 个技能` : ''}
                                             </span>
                                         </p>
                                     </div>
@@ -1121,13 +1173,21 @@
                                             <option key={m.name} value={m.name}>{m.name} ({m.model_name})</option>
                                         ))}
                                     </select>
-                                    <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontWeight: 600 }}>工具:</span>
-                                    {activeToolCount === 0
+                                    <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontWeight: 600 }}>技能:</span>
+                                    {/* ── 智能路由开关 ── */}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '10px', color: autoRoute ? '#667eea' : '#94a3b8', fontWeight: 600, background: autoRoute ? '#eef2ff' : '#f1f5f9', padding: '3px 8px', borderRadius: '8px', border: `1.5px solid ${autoRoute ? '#a5b4fc' : '#e2e8f0'}`, transition: 'all 0.2s' }} title="开启后由 LLM 根据用户意图自动选择相关技能">
+                                        <input type="checkbox" checked={autoRoute} onChange={e => setAutoRoute(e.target.checked)}
+                                            style={{ display: 'none' }} />
+                                        <span>{autoRoute ? '🧠' : '🧠'}</span> 自动
+                                    </label>
+                                    {autoRoute
+                                        ? <span style={{ fontSize: '10px', color: '#667eea', fontStyle: 'italic' }}>LLM 智能匹配</span>
+                                        : (activeSkillCount === 0
                                         ? <span style={{ fontSize: '11px', color: '#94a3b8' }}>未开启</span>
-                                        : Object.entries(tools).filter(([name]) => toolEnabled[name]).map(([name]) => (
+                                        : enabledSkills.map(([name]) => (
                                             <span key={name} style={{ fontSize: '11px', padding: '3px 10px', background: '#eef2ff', borderRadius: '8px', color: '#667eea', fontWeight: 600 }}>{name}</span>
                                         ))
-                                    }
+                                    )}
                                 </div>
                                 <div className="chat-input-row">
                                     <textarea
