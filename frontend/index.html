@@ -308,8 +308,6 @@
             const [logWidth, setLogWidth] = useState(440);  // 抽屉宽度（像素）
             // ── 会话 ID（Checkpointer 关联），随机生成 ──
             const [threadId, setThreadId] = useState(() => 'session-' + Math.random().toString(36).slice(2, 10));
-            // ── 智能路由开关 ──
-            const [autoRoute, setAutoRoute] = useState(false);
             // ── 历史对话 ──
             const [conversations, setConversations] = useState([]);          // 对话列表
             const [loadingConversation, setLoadingConversation] = useState(false);  // 加载中
@@ -556,8 +554,7 @@
                             api_key: selectedApiKey,          // API 密钥
                             base_url: selectedBaseUrl,        // API 端点
                             system_prompt: prompt,            // 系统提示词
-                            skills: autoRoute ? [] : enabledSkills.map(([n]) => n),  // 智能路由时不传 skills
-                            auto_route: autoRoute,            // 启用 LLM 智能路由
+                            skills: enabledSkills.map(([n]) => n),  // 启用的技能名列表（后端自动发现优先）
                             max_iterations: 10,               // 最大推理轮数
                             input: userMsg.content,           // 用户输入
                             thread_id: threadId,              // 会话 ID
@@ -624,7 +621,7 @@
                 }
                 setRunning(false);          // 恢复可输入状态
                 loadConversations();         // 刷新历史对话列表（新对话自动出现）
-            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations, enabledSkills, autoRoute]);
+            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations, enabledSkills]);
 
             // ── handleKeyDown: Enter 发送，Shift+Enter 换行 ──
             const handleKeyDown = useCallback((e) => {
@@ -1174,20 +1171,12 @@
                                         ))}
                                     </select>
                                     <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontWeight: 600 }}>技能:</span>
-                                    {/* ── 智能路由开关 ── */}
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '10px', color: autoRoute ? '#667eea' : '#94a3b8', fontWeight: 600, background: autoRoute ? '#eef2ff' : '#f1f5f9', padding: '3px 8px', borderRadius: '8px', border: `1.5px solid ${autoRoute ? '#a5b4fc' : '#e2e8f0'}`, transition: 'all 0.2s' }} title="开启后由 LLM 根据用户意图自动选择相关技能">
-                                        <input type="checkbox" checked={autoRoute} onChange={e => setAutoRoute(e.target.checked)}
-                                            style={{ display: 'none' }} />
-                                        <span>{autoRoute ? '🧠' : '🧠'}</span> 自动
-                                    </label>
-                                    {autoRoute
-                                        ? <span style={{ fontSize: '10px', color: '#667eea', fontStyle: 'italic' }}>LLM 智能匹配</span>
-                                        : (activeSkillCount === 0
+                                    {activeSkillCount === 0
                                         ? <span style={{ fontSize: '11px', color: '#94a3b8' }}>未开启</span>
                                         : enabledSkills.map(([name]) => (
                                             <span key={name} style={{ fontSize: '11px', padding: '3px 10px', background: '#eef2ff', borderRadius: '8px', color: '#667eea', fontWeight: 600 }}>{name}</span>
                                         ))
-                                    )}
+                                    }
                                 </div>
                                 <div className="chat-input-row">
                                     <textarea

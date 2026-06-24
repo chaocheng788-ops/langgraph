@@ -1,11 +1,24 @@
 """
-LLM 辅助技能路由模块
-使用轻量级 LLM 根据用户意图选择相关技能，减少主 LLM 的 token 消耗。
+技能发现模块 — Skill-as-Tool 模式
+
+将技能转换为 OpenAI Function Calling 工具，
+让主 LLM 通过原生 tool_calls 自行选择需要的技能。
+
+技能来源（两套，合并使用）：
+  1. skills/ 目录 — 文件定义的技能（prompt.md + YAML Front Matter）
+  2. data/skills.json — 前端 API 创建的技能
+
+流程:
+  1. 合并两套技能数据，每个技能生成一个 meta-tool（name=use_skill__xxx）
+  2. 用 system_prompt（原样，不拼接）+ user_input + meta_tools 调用 LLM
+  3. 解析 tool_calls 提取选中的技能名
+  4. 返回技能名列表，由调用方注入 prompt 和加载真实工具
 """
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 from pathlib import Path
 
+from app.skill_loader import load_skills_from_dir
 from app.execution_log import add_log
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -22,143 +35,163 @@ def _read_json(filepath: Path) -> dict:
     return {}
 
 
-def build_skill_catalog(all_skills: dict) -> str:
+def get_all_skills() -> dict:
     """
-    构建技能目录文本，用于传给 Router LLM。
-
-    格式示例:
-      1. weather_skill
-         描述: 提供天气查询相关功能
-         包含工具: get_weather (查询城市天气)
-      2. search_skill
-         描述: 提供网页搜索功能
-         包含工具: search_web (搜索网页信息)
-    """
-    lines = []
-    for idx, (skill_name, skill_data) in enumerate(all_skills.items(), 1):
-        description = skill_data.get("description", "无描述")
-        tools = skill_data.get("tools", [])
-
-        tool_summary = ", ".join([
-            f"{t['name']} ({t.get('description', '')[:30]})"
-            for t in tools[:3]
-        ])
-
-        lines.append(f"{idx}. {skill_name}")
-        lines.append(f"   描述: {description}")
-        lines.append(f"   包含工具: {tool_summary if tool_summary else '无'}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-ROUTER_SYSTEM_PROMPT = """你是一个智能意图分类助手。你的任务是根据用户的问题，从可用技能列表中选择最相关的 1-3 个技能。
-
-选择原则:
-1. 仔细分析用户问题的意图和需求
-2. 只选择真正需要用到的技能，不要过度选择
-3. 如果用户问题涉及多个领域，可以选择多个技能
-4. 如果没有匹配的技能，返回空列表 []
-5. 必须严格按照 JSON 格式返回
-
-输出格式:
-{"selected_skills": ["skill_name1", "skill_name2"]}
-
-示例 1:
-用户: 北京今天天气怎么样？
-输出: {"selected_skills": ["weather_skill"]}
-
-示例 2:
-用户: 帮我查一下苹果公司的最新新闻，然后翻译成中文
-输出: {"selected_skills": ["search_skill", "translation_skill"]}
-
-示例 3:
-用户: 你好
-输出: {"selected_skills": []}"""
-
-
-def llm_based_routing(
-    user_query: str,
-    all_skills: dict,
-    api_key: str,
-    base_url: str = "https://api.deepseek.com/v1",
-    model: str = "deepseek-chat"
-) -> List[str]:
-    """
-    使用 LLM 进行技能路由。
-
-    Args:
-        user_query: 用户查询文本
-        all_skills: 所有技能数据（从 skills.json 读取）
-        api_key: API 密钥
-        base_url: API 地址
-        model: 使用的模型名称
+    合并两套技能来源：文件目录 + API 创建的 JSON。
+    文件目录定义的技能优先级更高（同名覆盖）。
 
     Returns:
-        相关技能名称列表，如 ["weather_skill", "search_skill"]
+        {skill_name: skill_data}
+    """
+    # 1. 从 skills/ 目录加载
+    skills = load_skills_from_dir()
+
+    # 2. 从 data/skills.json 加载（API 创建的技能）
+    json_skills = _read_json(SKILLS_FILE)
+    for name, data in json_skills.items():
+        if name not in skills:
+            skills[name] = data
+
+    return skills
+
+
+def build_skill_meta_tools(all_skills: dict) -> list:
+    """
+    将技能列表转换为 OpenAI Function Calling 工具定义。
+
+    每个技能生成一个 function，name 为 "use_skill__技能名"，
+    description 包含技能描述和所含工具摘要，无需参数。
+
+    Args:
+        all_skills: skills.json 的全部内容，key 为技能名
+
+    Returns:
+        OpenAI tools 数组，可直接传给 LLM
+
+    示例输出:
+        [{
+            "type": "function",
+            "function": {
+                "name": "use_skill__weather_skill",
+                "description": "天气查询技能。包含工具: get_weather",
+                "parameters": {"type": "object", "properties": {}, "required": []}
+            }
+        }]
+    """
+    meta_tools = []
+    for skill_name, skill in all_skills.items():
+        tool_names = [t["name"] for t in skill.get("tools", [])]
+        tool_summary = ", ".join(tool_names) if tool_names else "无"
+
+        meta_tools.append({
+            "type": "function",
+            "function": {
+                "name": f"use_skill__{skill_name}",
+                "description": f"{skill.get('description', '')}。包含工具: {tool_summary}",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        })
+    return meta_tools
+
+
+def discover_skills(
+    user_input: str,
+    system_prompt: str,
+    all_skills: dict,
+    api_key: str,
+    base_url: str,
+    model_name: str
+) -> tuple:
+    """
+    使用 Function Calling 让 LLM 自行选择需要的技能。
+
+    system_prompt 原样传入，不做任何拼接。
+    LLM 通过 tool_calls 返回选中的技能，无需额外 JSON 解析。
+
+    Args:
+        user_input: 用户输入文本
+        system_prompt: 系统提示词（来自 prompt.json，原样使用）
+        all_skills: 所有技能数据
+        api_key: API 密钥
+        base_url: API 地址
+        model_name: 模型名称
+
+    Returns:
+        (selected_skills, discovery_detail)
+        - selected_skills: 选中的技能名列表
+        - discovery_detail: 发现过程的请求和响应详情，供 SSE 日志输出
     """
     if not all_skills:
-        return []
+        return [], None
 
-    if len(all_skills) == 1:
-        return list(all_skills.keys())
-
-    skill_catalog = build_skill_catalog(all_skills)
-    user_prompt = f"""可用技能目录:
-{skill_catalog}
-
-用户问题: {user_query}
-
-请输出 JSON 格式的选择结果:"""
+    meta_tools = build_skill_meta_tools(all_skills)
+    tool_names = [t["function"]["name"] for t in meta_tools]
 
     try:
         from langchain_openai import ChatOpenAI
 
-        router_llm = ChatOpenAI(
-            model=model,
+        llm = ChatOpenAI(
+            model=model_name,
             api_key=api_key,
             base_url=base_url,
             temperature=0,
-            max_tokens=200
         )
+        llm_with_tools = llm.bind_tools(meta_tools)
 
-        response = router_llm.invoke([
-            {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt}
+        response = llm_with_tools.invoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input}
         ])
 
-        content = response.content.strip()
+        tool_calls = getattr(response, "tool_calls", None) or []
+        response_content = getattr(response, "content", "") or ""
 
-        # 提取 JSON（处理 ```json ... ``` 包裹情况）
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+        selected_skills = []
+        for tc in tool_calls:
+            func_name = tc.get("name", tc.get("function", {}).get("name", ""))
+            if func_name.startswith("use_skill__"):
+                skill_name = func_name[len("use_skill__"):]
+                if skill_name in all_skills:
+                    selected_skills.append(skill_name)
 
-        result = json.loads(content)
-        selected_skills = result.get("selected_skills", [])
-
-        # 验证技能名称
-        valid_skills = [s for s in selected_skills if s in all_skills]
-
-        add_log("🧠 路由决策", json.dumps({
-            "query": user_query[:50],
+        add_log("🧠 技能发现", json.dumps({
+            "query": user_input[:50],
             "available": list(all_skills.keys()),
-            "selected": valid_skills,
-            "router_model": model
+            "selected": selected_skills,
+            "mode": "Function Calling"
         }, ensure_ascii=False))
 
-        return valid_skills[:3]
+        # 构建发现详情供 SSE 输出
+        detail = {
+            "request": {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt[:80]},
+                    {"role": "user", "content": user_input[:80]}
+                ],
+                "tools": meta_tools
+            },
+            "response": {
+                "content": response_content[:100] if response_content else None,
+                "tool_calls": [tc.get("name", tc.get("function", {}).get("name", "")) for tc in tool_calls] if tool_calls else []
+            }
+        }
+
+        return selected_skills[:3], detail
 
     except Exception as e:
-        add_log("⚠️ 路由失败", f"Router LLM 调用失败: {e}，回退到全部技能", "warning")
-        return list(all_skills.keys())[:5]
+        add_log("⚠️ 技能发现失败", f"{e}，回退到关键词匹配", "warning")
+        return keyword_based_routing(user_input, all_skills), None
 
 
 def keyword_based_routing(user_query: str, all_skills: dict) -> List[str]:
     """
     基于关键词的 Fallback 路由。
-    当 LLM 路由不可用时使用。
+    当 LLM 调用不可用时使用。
     """
     if not all_skills:
         return []
@@ -190,34 +223,40 @@ def select_relevant_skills(
     all_skills: dict,
     api_key: str = "",
     base_url: str = "https://api.deepseek.com/v1",
+    model_name: str = "deepseek-chat",
+    system_prompt: str = "",
     use_llm: bool = True
-) -> List[str]:
+) -> tuple:
     """
     主入口函数: 选择相关技能。
 
     策略:
-      1. 如果 use_llm=True，先尝试 LLM 路由
-      2. 如果 LLM 路由失败，回退到关键词路由
-      3. 如果都没有匹配，返回全部技能
+      1. 如果 use_llm=True，使用 Function Calling 让 LLM 自行选择
+      2. 如果 LLM 调用失败，回退到关键词路由
+      3. 如果都没有匹配，返回空列表
 
     Args:
         user_query: 用户查询
         all_skills: 所有技能数据
         api_key: API 密钥
         base_url: API 地址
+        model_name: 模型名称
+        system_prompt: 系统提示词（原样传入，不做拼接）
         use_llm: 是否使用 LLM 路由
 
     Returns:
-        相关技能名称列表
+        (selected_skills, discovery_detail)
     """
     if not all_skills or not user_query:
-        return list(all_skills.keys()) if all_skills else []
+        return [], None
 
     if not use_llm or not api_key:
-        # 没有 API Key 时使用关键词路由
-        return keyword_based_routing(user_query, all_skills)
+        return keyword_based_routing(user_query, all_skills), None
 
     try:
-        return llm_based_routing(user_query, all_skills, api_key, base_url)
+        return discover_skills(
+            user_query, system_prompt, all_skills,
+            api_key, base_url, model_name
+        )
     except Exception:
-        return keyword_based_routing(user_query, all_skills)
+        return keyword_based_routing(user_query, all_skills), None

@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from app.graph import build_workflow
 from app.execution_log import get_logs, clear_logs, add_log, LoggingCallbackHandler
-from app.skill_router import select_relevant_skills
+from app.skill_router import select_relevant_skills, get_all_skills
 
 from langchain_core.messages import (
     AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
@@ -91,8 +91,7 @@ class AgentRun(BaseModel):
     base_url: str = "https://api.deepseek.com/v1"
     system_prompt: str = "你是一个有用的AI助手。"
     tools: List[Dict[str, Any]] = []
-    skills: List[str] = []  # 技能名称列表，从 skills.json 聚合工具和提示词
-    auto_route: bool = False  # 是否启用 LLM 智能路由，自动选择相关技能
+    skills: List[str] = []  # 手动指定技能名称列表（技能发现失败时的回退）
     max_iterations: int = 10
     input: str = ""
     messages: Optional[List[Message]] = None  # OpenAI 格式消息数组（优先于 input）
@@ -173,7 +172,8 @@ def _openai_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
 
 def _resolve_skills(skill_names: List[str]) -> tuple:
     """
-    根据技能名列表从 skills.json 加载技能，聚合工具列表和提示词。
+    根据技能名列表加载技能，聚合工具列表和提示词。
+    支持文件目录（skills/）和 JSON 两种来源。
 
     Returns:
         (tools_list, merged_prompt) — tools_list 是工具配置列表，merged_prompt 是合并的提示词
@@ -181,7 +181,7 @@ def _resolve_skills(skill_names: List[str]) -> tuple:
     if not skill_names:
         return [], ""
 
-    skills_data = _read_json(SKILLS_FILE)
+    skills_data = get_all_skills()
     all_tools = []
     prompts = []
 
@@ -317,7 +317,8 @@ async def delete_tool(name: str):
 
 @app.get("/skills")
 async def list_skills():
-    return _read_json(SKILLS_FILE)
+    """列出所有技能（合并文件目录 + API 创建的）"""
+    return get_all_skills()
 
 
 @app.post("/skills")
@@ -399,26 +400,33 @@ async def run_agent(run: AgentRun):
             user_input = run.input
             add_log("执行开始", f"传统格式 | 输入: {run.input[:50]}... | 模型: {run.model_name} | 工具数: {len(run.tools)}")
 
-        # ── 解析 skills（优先于 tools）──
+        # ── 技能发现（默认开启，优先于手动 skills）──
         resolved_tools = run.tools
-        if run.auto_route and user_input:
-            # LLM 智能路由：根据用户意图自动选择相关技能
-            all_skills = _read_json(SKILLS_FILE)
-            if all_skills:
-                routed_skills = select_relevant_skills(
-                    user_input, all_skills,
-                    api_key=run.api_key, base_url=run.base_url
-                )
-                if routed_skills:
-                    skill_tools, _ = _resolve_skills(routed_skills)
-                    if skill_tools:
-                        resolved_tools = skill_tools
-                        add_log("🧠 智能路由", f"从 {len(all_skills)} 个技能中自动选择: {routed_skills}")
+        all_skills = get_all_skills()
+        if all_skills and user_input:
+            routed_skills, discovery_info = select_relevant_skills(
+                user_input, all_skills,
+                api_key=run.api_key, base_url=run.base_url,
+                model_name=run.model_name, system_prompt=run.system_prompt
+            )
+            # 技能发现请求和返回详情
+            if discovery_info:
+                add_log("🔍 技能发现请求", json.dumps(discovery_info.get("request", {}), ensure_ascii=False, indent=2))
+                add_log("🧠 技能发现结果", json.dumps(discovery_info.get("response", {}), ensure_ascii=False, indent=2))
+            if routed_skills:
+                skill_tools, skill_prompt = _resolve_skills(routed_skills)
+                if skill_tools:
+                    resolved_tools = skill_tools
+                if skill_prompt:
+                    run.system_prompt = f"{run.system_prompt}\n\n[已匹配技能: {', '.join(routed_skills)}]\n\n{skill_prompt}"
+                add_log("🧠 技能发现", f"从 {len(all_skills)} 个技能中自动选择: {routed_skills}")
         elif run.skills:
-            skill_tools, _ = _resolve_skills(run.skills)
+            skill_tools, skill_prompt = _resolve_skills(run.skills)
             if skill_tools:
                 resolved_tools = skill_tools
-                add_log("技能加载", f"从 {len(run.skills)} 个技能中加载 {len(skill_tools)} 个工具")
+            if skill_prompt:
+                run.system_prompt = run.system_prompt + "\n\n" + skill_prompt
+            add_log("技能加载", f"从 {len(run.skills)} 个技能中加载 {len(skill_tools)} 个工具")
 
         config = {
             "model_name": run.model_name,
@@ -542,24 +550,28 @@ async def run_agent_stream(run: AgentRun):
         input_messages = [HumanMessage(content=run.input or "")]
         user_input = run.input
 
-    # ── 解析 skills（优先于 tools）──
+    # ── 技能发现（默认开启，优先于手动 skills）──
     resolved_tools = run.tools
-    if run.auto_route and user_input:
-        # LLM 智能路由：根据用户意图自动选择相关技能
-        all_skills = _read_json(SKILLS_FILE)
-        if all_skills:
-            routed_skills = select_relevant_skills(
-                user_input, all_skills,
-                api_key=run.api_key, base_url=run.base_url
-            )
-            if routed_skills:
-                skill_tools, _ = _resolve_skills(routed_skills)
-                if skill_tools:
-                    resolved_tools = skill_tools
+    discovery_info = None  # 技能发现详情，供 SSE 日志输出
+    all_skills = get_all_skills()
+    if all_skills and user_input:
+        routed_skills, discovery_info = select_relevant_skills(
+            user_input, all_skills,
+            api_key=run.api_key, base_url=run.base_url,
+            model_name=run.model_name, system_prompt=run.system_prompt
+        )
+        if routed_skills:
+            skill_tools, skill_prompt = _resolve_skills(routed_skills)
+            if skill_tools:
+                resolved_tools = skill_tools
+            if skill_prompt:
+                run.system_prompt = f"{run.system_prompt}\n\n[已匹配技能: {', '.join(routed_skills)}]\n\n{skill_prompt}"
     elif run.skills:
-        skill_tools, _ = _resolve_skills(run.skills)
+        skill_tools, skill_prompt = _resolve_skills(run.skills)
         if skill_tools:
             resolved_tools = skill_tools
+        if skill_prompt:
+            run.system_prompt = run.system_prompt + "\n\n" + skill_prompt
 
     config = {
         "model_name": run.model_name,
@@ -585,10 +597,14 @@ async def run_agent_stream(run: AgentRun):
         try:
             # ── 初始日志 ──
             init_logs = [
-                {"step": "执行开始", "detail": f"传统格式 | 输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
-                {"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"},
-                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
+                {"step": "执行开始", "detail": f"输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
             ]
+            # 技能发现请求和结果
+            if discovery_info:
+                init_logs.append({"step": "🔍 技能发现请求", "detail": json.dumps(discovery_info.get("request", {}), ensure_ascii=False, indent=2), "level": "info"})
+                init_logs.append({"step": "🧠 技能发现结果", "detail": json.dumps(discovery_info.get("response", {}), ensure_ascii=False, indent=2), "level": "info"})
+            init_logs.append({"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"})
+            init_logs.append({"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"})
             for l in init_logs:
                 l["timestamp"] = _now()
                 yield _sse({"type": "log", **l})
@@ -619,7 +635,7 @@ async def run_agent_stream(run: AgentRun):
                     for msg_list in (msgs if isinstance(msgs, list) else [msgs]):
                         if isinstance(msg_list, list):
                             for m in msg_list:
-                                entry = {"role": getattr(m, "type", "?"), "content": getattr(m, "content", "")[:200]}
+                                entry = {"role": getattr(m, "type", "?"), "content": getattr(m, "content", "")[:3000]}
                                 for a in ("tool_calls", "tool_call_id", "name"):
                                     v = getattr(m, a, None)
                                     if v: entry[a] = v

@@ -1,5 +1,0 @@
-{
-  "name": "architect",
-  "version": "1.0.0",
-  "description": "架构图生成：根据自然语言描述生成 Mermaid 架构图，支持流程图、时序图、ER图、C4架构图等"
-}
