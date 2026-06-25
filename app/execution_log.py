@@ -105,9 +105,9 @@ class LoggingCallbackHandler(BaseCallbackHandler):
             # 移除值为 None 的键，保持输出整洁
             request_body = {k: v for k, v in request_body.items() if v is not None}
 
-            # 记录到全局日志（截断到 5000 字符避免日志膨胀）
+            # 记录到全局日志
             add_log(f"🔵 模型请求 #{pi+1}",
-                json.dumps(request_body, ensure_ascii=False, indent=2, default=str)[:5000])
+                json.dumps(request_body, ensure_ascii=False, indent=2, default=str))
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         """
@@ -126,13 +126,13 @@ class LoggingCallbackHandler(BaseCallbackHandler):
                     "additional_kwargs": getattr(msg, "additional_kwargs", {}),
                 }
                 raw_str = json.dumps(raw, ensure_ascii=False, indent=2, default=str)
-                add_log(f"🟢 模型响应 #{i+1}.{j+1}", f"原始返回:\n{raw_str[:3000]}")
+                add_log(f"🟢 模型响应 #{i+1}.{j+1}", f"原始返回:\n{raw_str}")
 
                 # ── 思考链展示（DeepSeek-R1 / 深度推理模型） ──
                 add_kw = raw.get("additional_kwargs", {})
                 reasoning = add_kw.get("reasoning_content", "")
                 if reasoning:  # 如果有思维链内容，单独展示
-                    add_log("💭 思考链 (R1)", str(reasoning)[:2000])
+                    add_log("💭 思考链 (R1)", str(reasoning))
 
                 # ── 模型决策分析 ──
                 tool_calls = raw.get("tool_calls")
@@ -153,11 +153,11 @@ class LoggingCallbackHandler(BaseCallbackHandler):
     ) -> None:
         """工具开始执行时触发。"""
         tool_name = serialized.get("name", "?")
-        add_log(f"🔧 工具调用", f"工具: {tool_name}\n入参: {input_str[:500]}")
+        add_log(f"🔧 工具调用", f"工具: {tool_name}\n入参: {input_str}")
 
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
         """工具执行完毕时触发。"""
-        add_log(f"🔧 工具返回", str(output)[:2000])
+        add_log(f"🔧 工具返回", str(output))
 
     def on_tool_error(self, error: Any, **kwargs: Any) -> None:
         """工具执行出错时触发。"""

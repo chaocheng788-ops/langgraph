@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from app.graph import build_workflow
 from app.execution_log import get_logs, clear_logs, add_log, LoggingCallbackHandler
-from app.skill_router import resolve_skills, get_all_skills
+from app.skill_router import resolve_skills, get_all_skills, build_skill_meta_tools
 
 from langchain_core.messages import (
     AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
@@ -359,11 +359,9 @@ async def run_agent(run: AgentRun):
         # ── 技能发现：图内 route 节点自行处理，这里仅处理手动 skills 回退 ──
         resolved_tools = run.tools
         if run.skills and not run.tools:
-            skill_tools, skill_prompt = resolve_skills(run.skills)
+            skill_tools, _ = resolve_skills(run.skills)
             if skill_tools:
                 resolved_tools = skill_tools
-            if skill_prompt:
-                run.system_prompt = run.system_prompt + "\n\n" + skill_prompt
             add_log("技能加载", f"从 {len(run.skills)} 个技能中加载 {len(skill_tools)} 个工具")
 
         config = {
@@ -400,7 +398,7 @@ async def run_agent(run: AgentRun):
             f"模型: {run.model_name}\n"
             f"API地址: {run.base_url}\n"
             f"API Key: {run.api_key[:12]}...{run.api_key[-4:] if len(run.api_key) > 16 else '****'}\n"
-            f"系统提示词: {run.system_prompt[:80]}{'...' if len(run.system_prompt) > 80 else ''}\n"
+            f"系统提示词: {run.system_prompt}\n"
             f"工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n"
             f"最大迭代: {run.max_iterations}\n"
             f"输入消息数: {len(input_messages)}"
@@ -408,7 +406,7 @@ async def run_agent(run: AgentRun):
         for i, msg in enumerate(input_messages):
             role = getattr(msg, 'type', 'unknown')
             content = getattr(msg, 'content', '')
-            add_log(f"  📝 消息#{i+1}", f"[{role}] {str(content)[:100]}")
+            add_log(f"  📝 消息#{i+1}", f"[{role}] {str(content)}")
 
         add_log("执行图", f"开始 invoke, thread_id={thread_id}, 输入消息数: {len(input_messages)}")
         result = graph.invoke({
@@ -491,11 +489,9 @@ async def run_agent_stream(run: AgentRun):
     # ── 技能发现：图内 route 节点自行处理，这里仅处理手动 skills 回退 ──
     resolved_tools = run.tools
     if run.skills and not run.tools:
-        skill_tools, skill_prompt = resolve_skills(run.skills)
+        skill_tools, _ = resolve_skills(run.skills)
         if skill_tools:
             resolved_tools = skill_tools
-        if skill_prompt:
-            run.system_prompt = run.system_prompt + "\n\n" + skill_prompt
 
     config = {
         "model_name": run.model_name,
@@ -521,9 +517,9 @@ async def run_agent_stream(run: AgentRun):
         try:
             # ── 初始日志 ──
             init_logs = [
-                {"step": "执行开始", "detail": f"输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
-                {"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"},
-                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
+                {"step": "执行开始", "detail": f"输入: {(user_input or '')} | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
+                {"step": "构建图", "detail": f"system_prompt: {run.system_prompt}", "level": "info"},
+                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt}\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
             ]
             for l in init_logs:
                 l["timestamp"] = _now()
@@ -531,6 +527,28 @@ async def run_agent_stream(run: AgentRun):
 
             # ── 流式执行图 ──
             model_call_count = 0
+            route_state = {}  # 缓存 route 节点状态，用于合并到模型请求日志
+            agent_depth = 0   # 区分外层 subgraph 和内层 ReAct agent 节点
+            agent_state = {}  # 缓存 agent 节点状态
+
+            # ── 辅助函数：序列化状态为可读 JSON ──
+            def _serialize_state(state: dict, label: str) -> str:
+                """将 OrchestratorState 序列化为前端可读的 JSON 字符串。"""
+                msgs = state.get("messages", [])
+                msgs_json = []
+                for m in msgs:
+                    entry = {"role": getattr(m, "type", "?"), "content": str(getattr(m, "content", ""))}
+                    tc = getattr(m, "tool_calls", None)
+                    if tc:
+                        entry["tool_calls"] = [{"name": t.get("name", "?"), "args": t.get("args", {})} for t in tc]
+                    msgs_json.append(entry)
+                return json.dumps({
+                    "selected_skills": state.get("selected_skills", []),
+                    "remaining_steps": state.get("remaining_steps", "?"),
+                    "messages_count": len(msgs),
+                    "messages": msgs_json,
+                }, ensure_ascii=False, indent=2)
+
             async for event in graph.astream_events(
                 {
                     "messages": input_messages,
@@ -543,8 +561,42 @@ async def run_agent_stream(run: AgentRun):
                 name = event.get("name", "")
                 data = event.get("data", {})
 
-                if kind == "on_chat_model_start":
+                # ── route 节点：静默捕获状态，合并到模型请求日志 ──
+                if kind == "on_chain_start" and name == "route":
+                    route_state["input"] = data.get("input", {})
+
+                elif kind == "on_chain_end" and name == "route":
+                    route_state["output"] = data.get("output", {})
+                    # 发送 route 出参摘要（从 input 取 remaining_steps，output 不包含）
+                    out = route_state["output"]
+                    inp = route_state.get("input", {})
+                    yield _sse({"type": "log", "timestamp": _now(),
+                        "step": "🧠 技能路由结果",
+                        "detail": json.dumps({
+                            "selected_skills": out.get("selected_skills", []),
+                            "remaining_steps": inp.get("remaining_steps", "?"),
+                        }, ensure_ascii=False, indent=2),
+                        "level": "info"})
+
+                # ── agent 节点：用 depth 区分外层 subgraph 和内层 ReAct agent ──
+                elif kind == "on_chain_start" and name == "agent":
+                    agent_depth += 1
+                    if agent_depth == 1:  # 仅外层 subgraph
+                        agent_state["input"] = data.get("input", {})
+
+                elif kind == "on_chain_end" and name == "agent":
+                    if agent_depth == 1:  # 仅外层 subgraph
+                        agent_state["output"] = data.get("output", {})
+                        yield _sse({"type": "log", "timestamp": _now(),
+                            "step": "📤 agent 节点出参",
+                            "detail": _serialize_state(agent_state["output"], name),
+                            "level": "info"})
+                    agent_depth -= 1
+
+                elif kind == "on_chat_model_start":
                     model_call_count += 1
+                    is_route_call = (model_call_count == 1)  # 第一个模型调用 = route 节点
+                    is_first_agent_call = (model_call_count == 2)  # 第二个模型调用 = agent 首次推理
                     inv = data.get("input", {})
                     meta = event.get("metadata", {})
                     msgs = inv.get("messages", [])
@@ -555,17 +607,49 @@ async def run_agent_stream(run: AgentRun):
                     for msg_list in (msgs if isinstance(msgs, list) else [msgs]):
                         if isinstance(msg_list, list):
                             for m in msg_list:
-                                entry = {"role": getattr(m, "type", "?"), "content": getattr(m, "content", "")[:3000]}
+                                entry = {"role": getattr(m, "type", "?"), "content": getattr(m, "content", "")}
                                 for a in ("tool_calls", "tool_call_id", "name"):
                                     v = getattr(m, a, None)
                                     if v: entry[a] = v
                                 msgs_json.append(entry)
 
                     req_body = {"model": model_name, "temperature": temperature, "messages": msgs_json}
-                    if resolved_tools: req_body["tools"] = resolved_tools
+                    # 路由节点: 展示技能元工具；agent 节点: 展示 resolved_tools
+                    if is_route_call:
+                        route_tools = build_skill_meta_tools(get_all_skills())
+                        if route_tools:
+                            req_body["tools"] = route_tools
+                    elif resolved_tools:
+                        req_body["tools"] = resolved_tools
 
-                    yield _sse({"type": "log", "timestamp": _now(), "step": f"🔵 模型请求 #{model_call_count}",
-                        "detail": json.dumps(req_body, ensure_ascii=False, indent=2, default=str)[:5000], "level": "info"})
+                    # route / agent 首调用：合并状态信息到模型请求日志
+                    step_label = f"🔵 模型请求 #{model_call_count}"
+                    detail = json.dumps(req_body, ensure_ascii=False, indent=2, default=str)
+                    if is_route_call and route_state.get("input"):
+                        rs = route_state["input"]
+                        step_label = f"🔵 路由发现 #{model_call_count}"
+                        detail = json.dumps({
+                            "_state": {
+                                "selected_skills": rs.get("selected_skills", []),
+                                "remaining_steps": rs.get("remaining_steps", "?"),
+                                "messages_count": len(rs.get("messages", [])),
+                            },
+                            "_model_request": req_body,
+                        }, ensure_ascii=False, indent=2, default=str)
+                    elif is_first_agent_call and agent_state.get("input"):
+                        ag = agent_state["input"]
+                        step_label = f"🔵 Agent 推理 #{model_call_count}"
+                        detail = json.dumps({
+                            "_state": {
+                                "selected_skills": ag.get("selected_skills", []),
+                                "remaining_steps": ag.get("remaining_steps", "?"),
+                                "messages_count": len(ag.get("messages", [])),
+                            },
+                            "_model_request": req_body,
+                        }, ensure_ascii=False, indent=2, default=str)
+
+                    yield _sse({"type": "log", "timestamp": _now(), "step": step_label,
+                        "detail": detail, "level": "info"})
 
                 elif kind == "on_chat_model_end":
                     output = data.get("output", {})
@@ -575,7 +659,7 @@ async def run_agent_stream(run: AgentRun):
 
                     raw = {"content": content, "tool_calls": tool_calls, "additional_kwargs": add_kw}
                     yield _sse({"type": "log", "timestamp": _now(), "step": f"🟢 模型响应 #{model_call_count}.1",
-                        "detail": f"原始返回:\n{json.dumps(raw, ensure_ascii=False, indent=2, default=str)[:3000]}", "level": "info"})
+                        "detail": f"原始返回:\n{json.dumps(raw, ensure_ascii=False, indent=2, default=str)}", "level": "info"})
 
                     # 思考链
                     reasoning = add_kw.get("reasoning_content", "")

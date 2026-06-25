@@ -64,7 +64,7 @@ async def build_workflow(config: dict):
     )
 
     # ── 路由节点 ──
-    async def route_node(state: OrchestratorState, rt_config: dict):
+    async def route_node(state: OrchestratorState):
         messages = state.get("messages", [])
         user_input = ""
         for m in reversed(messages):
