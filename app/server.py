@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from app.graph import build_workflow
 from app.execution_log import get_logs, clear_logs, add_log, LoggingCallbackHandler
-from app.skill_router import select_relevant_skills, get_all_skills
+from app.skill_router import resolve_skills, get_all_skills
 
 from langchain_core.messages import (
     AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage,
@@ -91,7 +91,7 @@ class AgentRun(BaseModel):
     base_url: str = "https://api.deepseek.com/v1"
     system_prompt: str = "你是一个有用的AI助手。"
     tools: List[Dict[str, Any]] = []
-    skills: List[str] = []  # 手动指定技能名称列表（技能发现失败时的回退）
+    skills: List[str] = []  # 手动指定技能名称列表（图内路由自动发现优先）
     max_iterations: int = 10
     input: str = ""
     messages: Optional[List[Message]] = None  # OpenAI 格式消息数组（优先于 input）
@@ -164,50 +164,6 @@ def _openai_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
         lc_messages.append(msg_cls(**kwargs))
 
     return lc_messages
-
-
-# ============================================================
-# Skills 解析 — 从技能名列表聚合工具和提示词
-# ============================================================
-
-def _resolve_skills(skill_names: List[str]) -> tuple:
-    """
-    根据技能名列表加载技能，聚合工具列表和提示词。
-    支持文件目录（skills/）和 JSON 两种来源。
-
-    Returns:
-        (tools_list, merged_prompt) — tools_list 是工具配置列表，merged_prompt 是合并的提示词
-    """
-    if not skill_names:
-        return [], ""
-
-    skills_data = get_all_skills()
-    all_tools = []
-    prompts = []
-
-    for sname in skill_names:
-        skill = skills_data.get(sname)
-        if not skill:
-            continue
-        # 收集技能中的工具
-        for tool in skill.get("tools", []):
-            tool_entry = {
-                "name": tool.get("name", ""),
-                "description": tool.get("description", ""),
-                "parameters": tool.get("parameters_schema", tool.get("parameters", {})),
-            }
-            if tool.get("url"):
-                tool_entry["url"] = tool["url"]
-                tool_entry["method"] = tool.get("method", "GET")
-                tool_entry["headers"] = tool.get("headers", {})
-            all_tools.append(tool_entry)
-        # 收集技能提示词
-        skill_prompt = skill.get("prompt", "")
-        if skill_prompt:
-            prompts.append(f"## {sname}\n{skill_prompt}")
-
-    merged_prompt = "\n\n".join(prompts) if prompts else ""
-    return all_tools, merged_prompt
 
 
 # ============================================================
@@ -400,28 +356,10 @@ async def run_agent(run: AgentRun):
             user_input = run.input
             add_log("执行开始", f"传统格式 | 输入: {run.input[:50]}... | 模型: {run.model_name} | 工具数: {len(run.tools)}")
 
-        # ── 技能发现（默认开启，优先于手动 skills）──
+        # ── 技能发现：图内 route 节点自行处理，这里仅处理手动 skills 回退 ──
         resolved_tools = run.tools
-        all_skills = get_all_skills()
-        if all_skills and user_input:
-            routed_skills, discovery_info = select_relevant_skills(
-                user_input, all_skills,
-                api_key=run.api_key, base_url=run.base_url,
-                model_name=run.model_name, system_prompt=run.system_prompt
-            )
-            # 技能发现请求和返回详情
-            if discovery_info:
-                add_log("🔍 技能发现请求", json.dumps(discovery_info.get("request", {}), ensure_ascii=False, indent=2))
-                add_log("🧠 技能发现结果", json.dumps(discovery_info.get("response", {}), ensure_ascii=False, indent=2))
-            if routed_skills:
-                skill_tools, skill_prompt = _resolve_skills(routed_skills)
-                if skill_tools:
-                    resolved_tools = skill_tools
-                if skill_prompt:
-                    run.system_prompt = f"{run.system_prompt}\n\n[已匹配技能: {', '.join(routed_skills)}]\n\n{skill_prompt}"
-                add_log("🧠 技能发现", f"从 {len(all_skills)} 个技能中自动选择: {routed_skills}")
-        elif run.skills:
-            skill_tools, skill_prompt = _resolve_skills(run.skills)
+        if run.skills and not run.tools:
+            skill_tools, skill_prompt = resolve_skills(run.skills)
             if skill_tools:
                 resolved_tools = skill_tools
             if skill_prompt:
@@ -550,24 +488,10 @@ async def run_agent_stream(run: AgentRun):
         input_messages = [HumanMessage(content=run.input or "")]
         user_input = run.input
 
-    # ── 技能发现（默认开启，优先于手动 skills）──
+    # ── 技能发现：图内 route 节点自行处理，这里仅处理手动 skills 回退 ──
     resolved_tools = run.tools
-    discovery_info = None  # 技能发现详情，供 SSE 日志输出
-    all_skills = get_all_skills()
-    if all_skills and user_input:
-        routed_skills, discovery_info = select_relevant_skills(
-            user_input, all_skills,
-            api_key=run.api_key, base_url=run.base_url,
-            model_name=run.model_name, system_prompt=run.system_prompt
-        )
-        if routed_skills:
-            skill_tools, skill_prompt = _resolve_skills(routed_skills)
-            if skill_tools:
-                resolved_tools = skill_tools
-            if skill_prompt:
-                run.system_prompt = f"{run.system_prompt}\n\n[已匹配技能: {', '.join(routed_skills)}]\n\n{skill_prompt}"
-    elif run.skills:
-        skill_tools, skill_prompt = _resolve_skills(run.skills)
+    if run.skills and not run.tools:
+        skill_tools, skill_prompt = resolve_skills(run.skills)
         if skill_tools:
             resolved_tools = skill_tools
         if skill_prompt:
@@ -598,13 +522,9 @@ async def run_agent_stream(run: AgentRun):
             # ── 初始日志 ──
             init_logs = [
                 {"step": "执行开始", "detail": f"输入: {(user_input or '')[:50]}... | 模型: {run.model_name} | 工具数: {len(resolved_tools)}", "level": "info"},
+                {"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"},
+                {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
             ]
-            # 技能发现请求和结果
-            if discovery_info:
-                init_logs.append({"step": "🔍 技能发现请求", "detail": json.dumps(discovery_info.get("request", {}), ensure_ascii=False, indent=2), "level": "info"})
-                init_logs.append({"step": "🧠 技能发现结果", "detail": json.dumps(discovery_info.get("response", {}), ensure_ascii=False, indent=2), "level": "info"})
-            init_logs.append({"step": "构建图", "detail": f"system_prompt: {run.system_prompt[:40]}...", "level": "info"})
-            init_logs.append({"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt[:80]}...\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"})
             for l in init_logs:
                 l["timestamp"] = _now()
                 yield _sse({"type": "log", **l})

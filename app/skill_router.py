@@ -170,8 +170,8 @@ def discover_skills(
             "request": {
                 "model": model_name,
                 "messages": [
-                    {"role": "system", "content": system_prompt[:80]},
-                    {"role": "user", "content": user_input[:80]}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_input}
                 ],
                 "tools": meta_tools
             },
@@ -260,3 +260,41 @@ def select_relevant_skills(
         )
     except Exception:
         return keyword_based_routing(user_query, all_skills), None
+
+
+def resolve_skills(skill_names: list) -> tuple:
+    """
+    根据技能名列表加载技能，聚合工具列表和提示词。
+    支持文件目录（skills/）和 JSON 两种来源。
+
+    Returns:
+        (tools_list, merged_prompt)
+    """
+    if not skill_names:
+        return [], ""
+
+    skills_data = get_all_skills()
+    all_tools = []
+    prompts = []
+
+    for sname in skill_names:
+        skill = skills_data.get(sname)
+        if not skill:
+            continue
+        for tool in skill.get("tools", []):
+            tool_entry = {
+                "name": tool.get("name", ""),
+                "description": tool.get("description", ""),
+                "parameters": tool.get("parameters_schema", tool.get("parameters", {})),
+            }
+            if tool.get("url"):
+                tool_entry["url"] = tool["url"]
+                tool_entry["method"] = tool.get("method", "GET")
+                tool_entry["headers"] = tool.get("headers", {})
+            all_tools.append(tool_entry)
+        skill_prompt = skill.get("prompt", "")
+        if skill_prompt:
+            prompts.append(f"## {sname}\n{skill_prompt}")
+
+    merged_prompt = "\n\n".join(prompts) if prompts else ""
+    return all_tools, merged_prompt
