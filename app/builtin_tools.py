@@ -1,10 +1,15 @@
 """
 内置工具定义。
 职责:
-  1. 6 个模拟工具函数（search/calculator/summarize/translate/sentiment/weather）
-  2. BUILTIN_TOOLS 注册表（名称 → 函数映射）
+  1. 模拟工具函数（search/calculator/summarize/translate/sentiment/weather）
+  2. ContextWeave 绘图工具（generate_diagram/edit_diagram）
+  3. 通用架构图生成工具（generate_architecture_diagram）
+  4. BUILTIN_TOOLS 注册表（名称 → 函数映射）
 """
 import random  # 用于非内置城市的随机模拟
+
+from skills.contextweave.tool import generate_diagram, edit_diagram
+from skills.architecture_diagram.tool import generate_architecture_diagram
 
 
 def search_web(query: str) -> str:
@@ -107,4 +112,9 @@ BUILTIN_TOOLS = {
     "search_web": search_web,
     "analyze_sentiment": analyze_sentiment,
     "get_weather": get_weather,
+    # ── ContextWeave 绘图工具 ──
+    "generate_diagram": generate_diagram,
+    "edit_diagram": edit_diagram,
+    # ── 通用架构图生成工具 ──
+    "generate_architecture_diagram": generate_architecture_diagram,
 }

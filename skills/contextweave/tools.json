@@ -1,0 +1,42 @@
+[
+  {
+    "name": "generate_diagram",
+    "description": "生成新的架构图或图表。将结构化的图表描述转化为可视化图形，支持系统架构图、流程图、时序图、ER图、思维导图等。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_request": {
+          "type": "string",
+          "description": "详细的图表描述，需包含实体清单、关系定义、层级结构和关键行为（50-5000字符）"
+        },
+        "initial_cw_code": {
+          "type": "string",
+          "description": "已有的CW代码，修改已有图表时提供，首次生成请留空"
+        }
+      },
+      "required": ["user_request"]
+    }
+  },
+  {
+    "name": "edit_diagram",
+    "description": "编辑已有的图表。基于session_id提交修改意图，更新图表内容。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "description": "之前生成图表时返回的会话ID"
+        },
+        "user_request": {
+          "type": "string",
+          "description": "修改描述，说明需要变更的内容"
+        },
+        "initial_cw_code": {
+          "type": "string",
+          "description": "当前图表的CW代码"
+        }
+      },
+      "required": ["session_id", "user_request"]
+    }
+  }
+]
