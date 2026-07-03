@@ -690,6 +690,8 @@ async def run_agent_stream(run: AgentRun):
                     tool_output = data.get("output", "")
                     yield _sse({"type": "log", "timestamp": _now(), "step": "🔧 工具返回",
                         "detail": str(tool_output)[:2000], "level": "info"})
+                    # 推送 tool 消息到前端聊天区（用于检测 preview_url 等内嵌内容）
+                    yield _sse({"type": "msg", "role": "tool", "content": str(tool_output), "name": name})
                     # 收集 tool 消息
                     collected_messages.append({"role": "tool", "content": str(tool_output), "name": name})
 

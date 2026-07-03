@@ -1,0 +1,28 @@
+[
+  {
+    "name": "generate_architecture_diagram_v2",
+    "description": "生成架构图 HTML 文件。LLM 需要先生成完整的 HTML+CSS 代码（包含 DOCTYPE、html、head、body），然后将完整 HTML 字符串传入 html_content 参数。工具仅负责将 HTML 写入本地文件并打开浏览器预览。支持四层产品架构、微服务网格、分布式拓扑等多种场景。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_request": {
+          "type": "string",
+          "description": "用户原始需求描述，如'绘制微信宏观产品架构图'"
+        },
+        "html_content": {
+          "type": "string",
+          "description": "LLM 生成的完整 HTML 文档字符串，必须包含 <!DOCTYPE html>、<html>、<head>、<body> 等完整结构，内置所有 CSS 样式。这是核心参数，务必传入合法完整的 HTML。"
+        },
+        "title": {
+          "type": "string",
+          "description": "架构图标题，如'微信宏观产品架构图'，用于兜底模板和返回信息"
+        },
+        "output_name": {
+          "type": "string",
+          "description": "输出文件名，不含扩展名，默认 architecture"
+        }
+      },
+      "required": ["user_request", "html_content"]
+    }
+  }
+]

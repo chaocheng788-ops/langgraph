@@ -100,16 +100,11 @@ def generate_architecture_diagram(
     output_name: str = "architecture",
 ) -> str:
     """
-    生成通用分层架构图 HTML 文件。自动按四层标准架构（终端层→业务层→中台层→底座层）拆解目标系统。
+    生成通用分层架构图 HTML 文件。
 
     Args:
         user_request: 目标系统描述，包含系统名称、主要模块、功能场景等
-        layers_json: JSON 字符串，定义四层架构的模块结构，格式:
-            [{"key":"terminal","modules":[{"name":"Web","desc":"浏览器"}]},
-             {"key":"business","modules":[{"name":"订单","desc":"下单支付"}]},
-             {"key":"middleware","modules":[{"name":"认证","desc":"SSO"}]},
-             {"key":"infrastructure","modules":[{"name":"MySQL","desc":"主库"}]}]
-            留空则使用通用模板
+        layers_json: JSON 字符串，定义四层架构的模块结构（由 LLM 分析后传入）
         title: 架构图标题，如 "电商系统宏观架构图"，留空则自动生成
         output_name: 输出文件名，不含扩展名，默认 "architecture"
 

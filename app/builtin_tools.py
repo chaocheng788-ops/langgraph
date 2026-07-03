@@ -10,6 +10,7 @@ import random  # 用于非内置城市的随机模拟
 
 from skills.contextweave.tool import generate_diagram, edit_diagram
 from skills.architecture_diagram.tool import generate_architecture_diagram
+from skills.architecture_diagram_v2.tool import generate_architecture_diagram_v2
 
 
 def search_web(query: str) -> str:
@@ -112,9 +113,11 @@ BUILTIN_TOOLS = {
     "search_web": search_web,
     "analyze_sentiment": analyze_sentiment,
     "get_weather": get_weather,
-    # ── ContextWeave 绘图工具 ──
+    # ─ ContextWeave 绘图工具 ──
     "generate_diagram": generate_diagram,
     "edit_diagram": edit_diagram,
-    # ── 通用架构图生成工具 ──
+    # ── 通用架构图生成工具 v1（layers_json 参数） ──
     "generate_architecture_diagram": generate_architecture_diagram,
+    # ── 通用架构图生成工具 v2（html_content 参数，LLM 全权控制 HTML） ──
+    "generate_architecture_diagram_v2": generate_architecture_diagram_v2,
 }
