@@ -1,5 +1,20 @@
 [
   {
+    "name": "get_architecture_template",
+    "description": "按需获取架构图 HTML 模板。LLM 应先调用此工具获取模板，基于模板进行定制化修改（替换模块名称、增删层级、调整配色）后，再调用 generate_architecture_diagram_v2 保存。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "template_name": {
+          "type": "string",
+          "description": "模板名称: product_arch(四层产品架构/Flex纵向) / microservice(微服务网格/Grid) / topology(分布式拓扑/绝对定位连线)",
+          "enum": ["product_arch", "microservice", "topology"]
+        }
+      },
+      "required": ["template_name"]
+    }
+  },
+  {
     "name": "generate_architecture_diagram_v2",
     "description": "生成架构图 HTML 文件。LLM 需要先生成完整的 HTML+CSS 代码（包含 DOCTYPE、html、head、body），然后将完整 HTML 字符串传入 html_content 参数。工具仅负责将 HTML 写入本地文件并打开浏览器预览。支持四层产品架构、微服务网格、分布式拓扑等多种场景。",
     "parameters": {

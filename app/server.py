@@ -26,9 +26,7 @@ from langchain_core.messages import (
 )
 
 
-# ============================================================
-# Data Models
-# ============================================================
+# ═══════════════════════════════════════ Data Models ═════════════════════════════════════
 
 class ModelConfig(BaseModel):
     name: str
@@ -76,13 +74,13 @@ class PromptConfig(BaseModel):
 
 
 class Message(BaseModel):
-    """OpenAI-compatible message format."""
-    role: str  # "system", "user", "assistant", "tool"
+    """OpenAI 兼容的消息格式"""
+    role: str
     content: str = ""
     name: Optional[str] = None
     tool_call_id: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
-    reasoning_content: Optional[str] = None  # DeepSeek-R1 思维链
+    reasoning_content: Optional[str] = None
 
 
 class AgentRun(BaseModel):
@@ -91,16 +89,14 @@ class AgentRun(BaseModel):
     base_url: str = "https://api.deepseek.com/v1"
     system_prompt: str = "你是一个有用的AI助手。"
     tools: List[Dict[str, Any]] = []
-    skills: List[str] = []  # 手动指定技能名称列表（图内路由自动发现优先）
+    skills: List[str] = []          # 手动指定技能名称（图内路由自动发现优先）
     max_iterations: int = 10
     input: str = ""
-    messages: Optional[List[Message]] = None  # OpenAI 格式消息数组（优先于 input）
-    thread_id: str = ""  # 会话 ID，用于 Checkpointer 持久化上下文
+    messages: Optional[List[Message]] = None
+    thread_id: str = ""
 
 
-# ============================================================
-# Global State & Persistence
-# ============================================================
+# ═══════════════════════════════════════ Persistence ═══════════════════════════════════
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -123,9 +119,7 @@ def _write_json(filepath: Path, data: Any) -> None:
     filepath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-# ============================================================
-# OpenAI ↔ LangChain 消息转换
-# ============================================================
+# ═══════════════════════════════════════ Message Conversion ══════════════════════════════
 
 ROLE_TO_LC = {
     "system": SystemMessage,
@@ -136,39 +130,28 @@ ROLE_TO_LC = {
 
 
 def _openai_messages_to_langchain(messages: List[Message]) -> List[BaseMessage]:
-    """将 OpenAI 格式的消息数组转换为 LangChain 消息列表。"""
+    """将 OpenAI 格式的消息数组转换为 LangChain 消息列表"""
     lc_messages = []
     for msg in messages:
         msg_cls = ROLE_TO_LC.get(msg.role)
         if msg_cls is None:
             add_log("消息转换", f"未知角色 '{msg.role}'，跳过", "warning")
             continue
-
         kwargs = {"content": msg.content}
-
         if msg.role == "tool":
             kwargs["tool_call_id"] = msg.tool_call_id or ""
-            if msg.name:
-                kwargs["name"] = msg.name
+            if msg.name: kwargs["name"] = msg.name
         elif msg.role == "assistant" and msg.tool_calls:
             kwargs["tool_calls"] = msg.tool_calls
-            if msg.reasoning_content:
-                kwargs["reasoning_content"] = msg.reasoning_content
-        elif msg.name:
-            kwargs["name"] = msg.name
-
-        # 传递 reasoning_content（DeepSeek-R1 思维链）
+            if msg.reasoning_content: kwargs["reasoning_content"] = msg.reasoning_content
+        elif msg.name: kwargs["name"] = msg.name
         if msg.reasoning_content and "reasoning_content" not in kwargs:
             kwargs["reasoning_content"] = msg.reasoning_content
-
         lc_messages.append(msg_cls(**kwargs))
-
     return lc_messages
 
 
-# ============================================================
-# App Setup
-# ============================================================
+# ═══════════════════════════════════════ App Setup ════════════════════════════════════
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -176,34 +159,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(
-    title="LangGraph Agent Platform",
-    description="基于 LangGraph 的 Agent 配置与执行平台",
-    version="2.0.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="LangGraph Agent Platform", description="基于 LangGraph 的 Agent 配置与执行平台", version="2.0.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
-# ============================================================
-# Health
-# ============================================================
+# ═══════════════════════════════════════ CRUD APIs ════════════════════════════════════
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "langgraph-agent-platform"}
 
-
-# ============================================================
-# Model Config CRUD
-# ============================================================
 
 @app.get("/models")
 async def list_models():
@@ -221,16 +186,11 @@ async def save_model(model: ModelConfig):
 @app.delete("/models/{name}")
 async def delete_model(name: str):
     models = _read_json(MODELS_FILE)
-    if name not in models:
-        raise HTTPException(status_code=404, detail="模型不存在")
+    if name not in models: raise HTTPException(status_code=404, detail="模型不存在")
     del models[name]
     _write_json(MODELS_FILE, models)
     return {"message": f"模型 '{name}' 已删除"}
 
-
-# ============================================================
-# Tool Config CRUD
-# ============================================================
 
 @app.get("/tools")
 async def list_tools():
@@ -241,17 +201,8 @@ async def list_tools():
 async def save_tool(tool: ToolConfig):
     tools = _read_json(TOOLS_FILE)
     tool_dict = tool.model_dump()
-    # Store parameters in OpenAI-compatible format
-    tool_dict["parameters_schema"] = {
-        "type": "object",
-        "properties": {p.name: {"type": p.type, "description": p.description} for p in tool.parameters},
-        "required": [p.name for p in tool.parameters if p.required],
-    }
-    # Ensure url/method/headers are stored
-    if not tool.url:
-        tool_dict.pop("url", None)
-        tool_dict.pop("method", None)
-        tool_dict.pop("headers", None)
+    tool_dict["parameters_schema"] = {"type": "object", "properties": {p.name: {"type": p.type, "description": p.description} for p in tool.parameters}, "required": [p.name for p in tool.parameters if p.required]}
+    if not tool.url: tool_dict.pop("url", None); tool_dict.pop("method", None); tool_dict.pop("headers", None)
     tools[tool.name] = tool_dict
     _write_json(TOOLS_FILE, tools)
     return {"message": f"工具 '{tool.name}' 已保存", "name": tool.name}
@@ -260,20 +211,14 @@ async def save_tool(tool: ToolConfig):
 @app.delete("/tools/{name}")
 async def delete_tool(name: str):
     tools = _read_json(TOOLS_FILE)
-    if name not in tools:
-        raise HTTPException(status_code=404, detail="工具不存在")
+    if name not in tools: raise HTTPException(status_code=404, detail="工具不存在")
     del tools[name]
     _write_json(TOOLS_FILE, tools)
     return {"message": f"工具 '{name}' 已删除"}
 
 
-# ============================================================
-# Skill Config CRUD
-# ============================================================
-
 @app.get("/skills")
 async def list_skills():
-    """列出所有技能（合并文件目录 + API 创建的）"""
     return get_all_skills()
 
 
@@ -281,18 +226,10 @@ async def list_skills():
 async def save_skill(skill: SkillConfig):
     skills = _read_json(SKILLS_FILE)
     skill_dict = skill.model_dump()
-    # 为每个工具生成 parameters_schema
     for tool in skill_dict.get("tools", []):
         params = tool.get("parameters", [])
-        tool["parameters_schema"] = {
-            "type": "object",
-            "properties": {p["name"]: {"type": p["type"], "description": p["description"]} for p in params},
-            "required": [p["name"] for p in params if p.get("required")],
-        }
-        if not tool.get("url"):
-            tool.pop("url", None)
-            tool.pop("method", None)
-            tool.pop("headers", None)
+        tool["parameters_schema"] = {"type": "object", "properties": {p["name"]: {"type": p["type"], "description": p["description"]} for p in params}, "required": [p["name"] for p in params if p.get("required")]}
+        if not tool.get("url"): tool.pop("url", None); tool.pop("method", None); tool.pop("headers", None)
     skills[skill.name] = skill_dict
     _write_json(SKILLS_FILE, skills)
     return {"message": f"技能 '{skill.name}' 已保存", "name": skill.name}
@@ -301,16 +238,11 @@ async def save_skill(skill: SkillConfig):
 @app.delete("/skills/{name}")
 async def delete_skill(name: str):
     skills = _read_json(SKILLS_FILE)
-    if name not in skills:
-        raise HTTPException(status_code=404, detail="技能不存在")
+    if name not in skills: raise HTTPException(status_code=404, detail="技能不存在")
     del skills[name]
     _write_json(SKILLS_FILE, skills)
     return {"message": f"技能 '{name}' 已删除"}
 
-
-# ============================================================
-# Prompt Config
-# ============================================================
 
 @app.get("/prompt")
 async def get_prompt():
@@ -324,164 +256,60 @@ async def save_prompt(prompt: PromptConfig):
     return {"message": "提示词已保存"}
 
 
-# ============================================================
-# Agent Run
-# ============================================================
+# ═══════════════════════════════════════ Agent Run (non-streaming) ═══════════════════════
 
 @app.post("/run")
 async def run_agent(run: AgentRun):
-    """Execute the agent with given configuration and input.
-    
-    Supports two modes:
-    1. OpenAI 格式: 传入 messages 数组（优先）
-    2. 传统格式: 传入 input 字符串
-    """
     clear_logs()
     try:
-        # ── 会话 ID ──
         thread_id = run.thread_id or str(uuid.uuid4())
-
-        # ── 构建输入消息 ──
         if run.messages:
-            # OpenAI 格式：直接转换消息数组
             input_messages = _openai_messages_to_langchain(run.messages)
-            user_input = next(
-                (m.content for m in reversed(input_messages) if isinstance(m, HumanMessage)),
-                ""
-            )
-            add_log("执行开始", f"OpenAI格式 | 消息数: {len(run.messages)} | 模型: {run.model_name} | 工具数: {len(run.tools)}")
+            user_input = next((m.content for m in reversed(input_messages) if isinstance(m, HumanMessage)), "")
         else:
-            # 传统格式：单条 input
             input_messages = [HumanMessage(content=run.input or "")]
             user_input = run.input
-            add_log("执行开始", f"传统格式 | 输入: {run.input[:50]}... | 模型: {run.model_name} | 工具数: {len(run.tools)}")
-
-        # ── 技能发现：图内 route 节点自行处理，这里仅处理手动 skills 回退 ──
         resolved_tools = run.tools
         if run.skills and not run.tools:
             skill_tools, _ = resolve_skills(run.skills)
-            if skill_tools:
-                resolved_tools = skill_tools
-            add_log("技能加载", f"从 {len(run.skills)} 个技能中加载 {len(skill_tools)} 个工具")
-
-        config = {
-            "model_name": run.model_name,
-            "api_key": run.api_key,
-            "base_url": run.base_url,
-            "system_prompt": run.system_prompt,
-            "tools": resolved_tools,
-            "max_iterations": run.max_iterations,
-        }
-        add_log("构建图", f"system_prompt: {run.system_prompt[:40]}...")
+            if skill_tools: resolved_tools = skill_tools
+        config = {"model_name": run.model_name, "api_key": run.api_key, "base_url": run.base_url, "system_prompt": run.system_prompt, "tools": resolved_tools, "max_iterations": run.max_iterations}
         graph = await build_workflow(config)
-        # 提取图结构 (for /run endpoint)
-        try:
-            raw_graph = graph.get_graph()
-            nodes = [{"id": n, "type": getattr(raw_graph.nodes.get(n, None), "__class__.__name__", "?")}
-                     for n in raw_graph.nodes]
-            edges = []
-            for e in raw_graph.edges:
-                src = getattr(e, "source", str(e))
-                tgt = getattr(e, "target", "")
-                cond = getattr(e, "conditional", False)
-                edges.append({"from": src, "to": tgt} if not cond else {"from": src, "to": tgt, "conditional": True})
-            graph_summary = {
-                "节点": [n["id"] for n in nodes],
-                "边": edges,
-            }
-            add_log("图构建完成", json.dumps(graph_summary, ensure_ascii=False, indent=2))
-        except Exception:
-            add_log("图构建完成", f"图类型: {type(graph).__name__}")
-
-        # ── 记录完整请求参数 ──
-        add_log("📤 请求参数",
-            f"模型: {run.model_name}\n"
-            f"API地址: {run.base_url}\n"
-            f"API Key: {run.api_key[:12]}...{run.api_key[-4:] if len(run.api_key) > 16 else '****'}\n"
-            f"系统提示词: {run.system_prompt}\n"
-            f"工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n"
-            f"最大迭代: {run.max_iterations}\n"
-            f"输入消息数: {len(input_messages)}"
-        )
-        for i, msg in enumerate(input_messages):
-            role = getattr(msg, 'type', 'unknown')
-            content = getattr(msg, 'content', '')
-            add_log(f"  📝 消息#{i+1}", f"[{role}] {str(content)}")
-
-        add_log("执行图", f"开始 invoke, thread_id={thread_id}, 输入消息数: {len(input_messages)}")
-        result = graph.invoke({
-            "messages": input_messages,
-            "remaining_steps": min(run.max_iterations + 10, 50),
-        }, {
-            "configurable": {"thread_id": thread_id},
-            "callbacks": [LoggingCallbackHandler()],
-        })
-
-        # Serialize messages → OpenAI 兼容格式
+        result = graph.invoke({"messages": input_messages, "remaining_steps": min(run.max_iterations + 10, 50)}, {"configurable": {"thread_id": thread_id}, "callbacks": [LoggingCallbackHandler()]})
         messages = []
-        for i, msg in enumerate(result.get("messages", [])):
+        for msg in result.get("messages", []):
             try:
-                entry = {
-                    "role": getattr(msg, "type", "unknown"),
-                    "content": getattr(msg, "content", ""),
-                }
-                name = getattr(msg, "name", None)
-                if name:
-                    entry["name"] = name
-                # 保留 tool_call_id（tool 消息）
-                tc_id = getattr(msg, "tool_call_id", None)
-                if tc_id:
-                    entry["tool_call_id"] = tc_id
-                # 保留 tool_calls（assistant 消息）
-                tc = getattr(msg, "tool_calls", None)
-                if tc:
-                    entry["tool_calls"] = tc
-                # 保留 reasoning_content（DeepSeek-R1 思维链）
-                reasoning = getattr(msg, "reasoning_content", None)
-                if reasoning:
-                    entry["reasoning_content"] = reasoning
+                entry = {"role": getattr(msg, "type", "unknown"), "content": getattr(msg, "content", "")}
+                for attr in ("name", "tool_calls", "tool_call_id", "reasoning_content"):
+                    v = getattr(msg, attr, None)
+                    if v: entry[attr] = v
                 messages.append(entry)
             except Exception:
                 messages.append({"role": "unknown", "content": str(msg)})
-
-        # Extract output from last AI message
         output = ""
         for msg in reversed(result.get("messages", [])):
             if hasattr(msg, "type") and msg.type == "ai" and msg.content:
-                output = msg.content
-                break
-        if not output:
-            output = str(messages[-1]["content"]) if messages else "(无输出)"
-
-        add_log("执行完成", f"共 {len(messages)} 条消息")
-
-        return {
-            "status": "success",
-            "output": output,
-            "messages": messages,
-            "logs": get_logs(),
-            "thread_id": thread_id,
-        }
+                output = msg.content; break
+        if not output: output = str(messages[-1]["content"]) if messages else "(无输出)"
+        return {"status": "success", "output": output, "messages": messages, "logs": get_logs(), "thread_id": thread_id}
     except Exception as e:
         add_log("执行失败", str(e), "error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ═══════════════════════════════════════ Agent Run (SSE streaming) ═══════════════════════
+
 @app.post("/run-stream")
 async def run_agent_stream(run: AgentRun):
-    """流式执行 Agent，通过 SSE 实时推送日志和消息。"""
+    """流式执行 Agent，通过 SSE 实时推送日志和消息到前端"""
     clear_logs()
     from datetime import datetime
-
     thread_id = run.thread_id or str(uuid.uuid4())
 
     # ── 构建输入消息 ──
     if run.messages:
         input_messages = _openai_messages_to_langchain(run.messages)
-        user_input = next(
-            (m.content for m in reversed(input_messages) if isinstance(m, HumanMessage)),
-            ""
-        )
+        user_input = next((m.content for m in reversed(input_messages) if isinstance(m, HumanMessage)), "")
     else:
         input_messages = [HumanMessage(content=run.input or "")]
         user_input = run.input
@@ -490,30 +318,16 @@ async def run_agent_stream(run: AgentRun):
     resolved_tools = run.tools
     if run.skills and not run.tools:
         skill_tools, _ = resolve_skills(run.skills)
-        if skill_tools:
-            resolved_tools = skill_tools
+        if skill_tools: resolved_tools = skill_tools
 
-    config = {
-        "model_name": run.model_name,
-        "api_key": run.api_key,
-        "base_url": run.base_url,
-        "system_prompt": run.system_prompt,
-        "tools": resolved_tools,
-        "max_iterations": run.max_iterations,
-    }
+    config = {"model_name": run.model_name, "api_key": run.api_key, "base_url": run.base_url, "system_prompt": run.system_prompt, "tools": resolved_tools, "max_iterations": run.max_iterations}
     graph = await build_workflow(config)
 
-    def _now():
-        return datetime.now().strftime("%H:%M:%S.%f")[:-3]
-
-    def _sse(data: dict) -> str:
-        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-    collected_messages = []  # 收集最终消息用于返回
-    log_index = 0
+    def _now(): return datetime.now().strftime("%H:%M:%S.%f")[:-3]                        # 毫秒精度时间戳
+    def _sse(data: dict) -> str: return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"  # SSE 格式化
+    collected_messages = []                                                                  # 收集最终消息用于返回
 
     async def event_generator():
-        nonlocal log_index
         try:
             # ── 初始日志 ──
             init_logs = [
@@ -521,88 +335,39 @@ async def run_agent_stream(run: AgentRun):
                 {"step": "构建图", "detail": f"system_prompt: {run.system_prompt}", "level": "info"},
                 {"step": "📤 请求参数", "detail": f"模型: {run.model_name}\nAPI地址: {run.base_url}\n系统提示词: {run.system_prompt}\n工具列表: {[t.get('name', '?') for t in resolved_tools] if resolved_tools else '(无)'}\n最大迭代: {run.max_iterations}\n输入消息数: {len(input_messages)}", "level": "info"},
             ]
-            for l in init_logs:
-                l["timestamp"] = _now()
-                yield _sse({"type": "log", **l})
+            for l in init_logs: l["timestamp"] = _now(); yield _sse({"type": "log", **l})
 
-            # ── 流式执行图 ──
-            model_call_count = 0
-            route_state = {}  # 缓存 route 节点状态，用于合并到模型请求日志
-            agent_depth = 0   # 区分外层 subgraph 和内层 ReAct agent 节点
-            agent_state = {}  # 缓存 agent 节点状态
+            model_call_count = 0; route_state = {}; agent_depth = 0; agent_state = {}
 
-            # ── 辅助函数：序列化状态为可读 JSON ──
-            def _serialize_state(state: dict, label: str) -> str:
-                """将 OrchestratorState 序列化为前端可读的 JSON 字符串。"""
-                msgs = state.get("messages", [])
-                msgs_json = []
-                for m in msgs:
-                    entry = {"role": getattr(m, "type", "?"), "content": str(getattr(m, "content", ""))}
-                    tc = getattr(m, "tool_calls", None)
-                    if tc:
-                        entry["tool_calls"] = [{"name": t.get("name", "?"), "args": t.get("args", {})} for t in tc]
-                    msgs_json.append(entry)
-                return json.dumps({
-                    "selected_skills": state.get("selected_skills", []),
-                    "remaining_steps": state.get("remaining_steps", "?"),
-                    "messages_count": len(msgs),
-                    "messages": msgs_json,
-                }, ensure_ascii=False, indent=2)
+            # ── 遍历 LangGraph astream_events v2 事件流 ──
+            async for event in graph.astream_events({"messages": input_messages, "remaining_steps": min(run.max_iterations + 10, 50)}, {"configurable": {"thread_id": thread_id}}, version="v2"):
+                kind = event["event"]; name = event.get("name", ""); data = event.get("data", {})
 
-            async for event in graph.astream_events(
-                {
-                    "messages": input_messages,
-                    "remaining_steps": min(run.max_iterations + 10, 50),
-                },
-                {"configurable": {"thread_id": thread_id}},
-                version="v2",
-            ):
-                kind = event["event"]
-                name = event.get("name", "")
-                data = event.get("data", {})
-
-                # ── route 节点：静默捕获状态，合并到模型请求日志 ──
+                # ── route 节点：技能发现 ──
                 if kind == "on_chain_start" and name == "route":
                     route_state["input"] = data.get("input", {})
-
                 elif kind == "on_chain_end" and name == "route":
                     route_state["output"] = data.get("output", {})
-                    # 发送 route 出参摘要（从 input 取 remaining_steps，output 不包含）
-                    out = route_state["output"]
-                    inp = route_state.get("input", {})
-                    yield _sse({"type": "log", "timestamp": _now(),
-                        "step": "🧠 技能路由结果",
-                        "detail": json.dumps({
-                            "selected_skills": out.get("selected_skills", []),
-                            "remaining_steps": inp.get("remaining_steps", "?"),
-                        }, ensure_ascii=False, indent=2),
-                        "level": "info"})
+                    out = route_state["output"]; inp = route_state.get("input", {})
+                    yield _sse({"type": "log", "timestamp": _now(), "step": "🧠 技能路由结果", "detail": json.dumps({"selected_skills": out.get("selected_skills", []), "remaining_steps": inp.get("remaining_steps", "?")}, ensure_ascii=False, indent=2), "level": "info"})
 
-                # ── agent 节点：用 depth 区分外层 subgraph 和内层 ReAct agent ──
+                # ── agent 节点：ReAct 推理循环 ──
                 elif kind == "on_chain_start" and name == "agent":
                     agent_depth += 1
-                    if agent_depth == 1:  # 仅外层 subgraph
-                        agent_state["input"] = data.get("input", {})
-
+                    if agent_depth == 1: agent_state["input"] = data.get("input", {})
                 elif kind == "on_chain_end" and name == "agent":
-                    if agent_depth == 1:  # 仅外层 subgraph
+                    if agent_depth == 1:
                         agent_state["output"] = data.get("output", {})
-                        yield _sse({"type": "log", "timestamp": _now(),
-                            "step": "📤 agent 节点出参",
-                            "detail": _serialize_state(agent_state["output"], name),
-                            "level": "info"})
+                        yield _sse({"type": "log", "timestamp": _now(), "step": "📤 agent 节点出参", "detail": json.dumps({"selected_skills": agent_state["output"].get("selected_skills", []), "remaining_steps": agent_state["output"].get("remaining_steps", "?"), "messages_count": len(agent_state["output"].get("messages", []))}, ensure_ascii=False, indent=2), "level": "info"})
                     agent_depth -= 1
 
+                # ── 模型请求开始：序列化请求参数到日志 ──
                 elif kind == "on_chat_model_start":
                     model_call_count += 1
-                    is_route_call = (model_call_count == 1)  # 第一个模型调用 = route 节点
-                    is_first_agent_call = (model_call_count == 2)  # 第二个模型调用 = agent 首次推理
-                    inv = data.get("input", {})
-                    meta = event.get("metadata", {})
-                    msgs = inv.get("messages", [])
-                    model_name = meta.get("ls_model_name", "?")
-                    temperature = meta.get("ls_temperature", 0.7)
-
+                    is_route_call = (model_call_count == 1)          # 第1次调用 = 路由节点
+                    is_first_agent_call = (model_call_count == 2)    # 第2次调用 = Agent 首次推理
+                    inv = data.get("input", {}); meta = event.get("metadata", {})
+                    msgs = inv.get("messages", []); model_name = meta.get("ls_model_name", "?"); temperature = meta.get("ls_temperature", 0.7)
                     msgs_json = []
                     for msg_list in (msgs if isinstance(msgs, list) else [msgs]):
                         if isinstance(msg_list, list):
@@ -612,220 +377,136 @@ async def run_agent_stream(run: AgentRun):
                                     v = getattr(m, a, None)
                                     if v: entry[a] = v
                                 msgs_json.append(entry)
-
                     req_body = {"model": model_name, "temperature": temperature, "messages": msgs_json}
-                    # 路由节点: 展示技能元工具；agent 节点: 展示 resolved_tools
                     if is_route_call:
                         route_tools = build_skill_meta_tools(get_all_skills())
-                        if route_tools:
-                            req_body["tools"] = route_tools
-                    elif resolved_tools:
-                        req_body["tools"] = resolved_tools
-
-                    # route / agent 首调用：合并状态信息到模型请求日志
+                        if route_tools: req_body["tools"] = route_tools
+                    elif resolved_tools: req_body["tools"] = resolved_tools
                     step_label = f"🔵 模型请求 #{model_call_count}"
                     detail = json.dumps(req_body, ensure_ascii=False, indent=2, default=str)
                     if is_route_call and route_state.get("input"):
                         rs = route_state["input"]
                         step_label = f"🔵 路由发现 #{model_call_count}"
-                        detail = json.dumps({
-                            "_state": {
-                                "selected_skills": rs.get("selected_skills", []),
-                                "remaining_steps": rs.get("remaining_steps", "?"),
-                                "messages_count": len(rs.get("messages", [])),
-                            },
-                            "_model_request": req_body,
-                        }, ensure_ascii=False, indent=2, default=str)
+                        detail = json.dumps({"_state": {"selected_skills": rs.get("selected_skills", []), "remaining_steps": rs.get("remaining_steps", "?"), "messages_count": len(rs.get("messages", []))}, "_model_request": req_body}, ensure_ascii=False, indent=2, default=str)
                     elif is_first_agent_call and agent_state.get("input"):
                         ag = agent_state["input"]
                         step_label = f"🔵 Agent 推理 #{model_call_count}"
-                        detail = json.dumps({
-                            "_state": {
-                                "selected_skills": ag.get("selected_skills", []),
-                                "remaining_steps": ag.get("remaining_steps", "?"),
-                                "messages_count": len(ag.get("messages", [])),
-                            },
-                            "_model_request": req_body,
-                        }, ensure_ascii=False, indent=2, default=str)
+                        detail = json.dumps({"_state": {"selected_skills": ag.get("selected_skills", []), "remaining_steps": ag.get("remaining_steps", "?"), "messages_count": len(ag.get("messages", []))}, "_model_request": req_body}, ensure_ascii=False, indent=2, default=str)
+                    yield _sse({"type": "log", "timestamp": _now(), "step": step_label, "detail": detail, "level": "info"})
 
-                    yield _sse({"type": "log", "timestamp": _now(), "step": step_label,
-                        "detail": detail, "level": "info"})
-
+                # ── 模型响应：推送 AI 文字 + 工具调用到前端聊天区 ──
                 elif kind == "on_chat_model_end":
                     output = data.get("output", {})
                     content = getattr(output, "content", "") if hasattr(output, "content") else output.get("content", "")
                     tool_calls = getattr(output, "tool_calls", None) if hasattr(output, "tool_calls") else output.get("tool_calls")
                     add_kw = getattr(output, "additional_kwargs", {}) if hasattr(output, "additional_kwargs") else output.get("additional_kwargs", {})
 
+                    # 日志：原始返回
                     raw = {"content": content, "tool_calls": tool_calls, "additional_kwargs": add_kw}
-                    yield _sse({"type": "log", "timestamp": _now(), "step": f"🟢 模型响应 #{model_call_count}.1",
-                        "detail": f"原始返回:\n{json.dumps(raw, ensure_ascii=False, indent=2, default=str)}", "level": "info"})
+                    yield _sse({"type": "log", "timestamp": _now(), "step": f"🟢 模型响应 #{model_call_count}.1", "detail": f"原始返回:\n{json.dumps(raw, ensure_ascii=False, indent=2, default=str)}", "level": "info"})
 
-                    # 思考链
+                    # 思考链（DeepSeek-R1）
                     reasoning = add_kw.get("reasoning_content", "")
-                    if reasoning:
-                        yield _sse({"type": "log", "timestamp": _now(), "step": "💭 思考链 (R1)", "detail": str(reasoning)[:2000], "level": "info"})
+                    if reasoning: yield _sse({"type": "log", "timestamp": _now(), "step": "💭 思考链 (R1)", "detail": str(reasoning)[:2000], "level": "info"})
 
+                    # AI 文字先推送（先表态，再触发工具调用 — 符合自然对话顺序）
+                    if content and str(content).strip():
+                        if not tool_calls: yield _sse({"type": "log", "timestamp": _now(), "step": "💭 模型决策", "detail": "直接回答，不调用工具", "level": "info"})
+                        yield _sse({"type": "msg", "role": "assistant", "content": str(content)})
+
+                    # 工具调用推送（所有 tool_call 都推送，包括 use_skill__ 路由伪工具）
                     if tool_calls:
                         for tc in tool_calls:
                             tc_name = tc.get("name", tc.get("function", {}).get("name", "?"))
                             tc_args = tc.get("args", tc.get("function", {}).get("arguments", {}))
-                            yield _sse({"type": "log", "timestamp": _now(), "step": "💭 模型决策",
-                                "detail": f"调用工具: {tc_name}\n参数: {json.dumps(tc_args, ensure_ascii=False)}", "level": "info"})
+                            yield _sse({"type": "log", "timestamp": _now(), "step": "💭 模型决策", "detail": f"调用工具: {tc_name}\n参数: {json.dumps(tc_args, ensure_ascii=False)}", "level": "info"})
                             yield _sse({"type": "msg", "role": "tool-start", "content": f"🔧 开始调用工具: {tc_name}", "name": tc_name})
-                    elif content and str(content).strip():
-                        yield _sse({"type": "log", "timestamp": _now(), "step": "💭 模型决策", "detail": "直接回答，不调用工具", "level": "info"})
-                        yield _sse({"type": "msg", "role": "assistant", "content": str(content)})
 
-                    # 收集消息
-                    collected_messages.append({"role": "ai" if not tool_calls else "ai", "content": str(content),
-                        "tool_calls": tool_calls})
+                    collected_messages.append({"role": "ai", "content": str(content), "tool_calls": tool_calls})
 
+                # ── 工具开始执行 ──
                 elif kind == "on_tool_start":
                     tool_input = data.get("input", "")
-                    yield _sse({"type": "log", "timestamp": _now(), "step": "🔧 工具调用",
-                        "detail": f"工具: {name}\n入参: {str(tool_input)[:500]}", "level": "info"})
+                    yield _sse({"type": "log", "timestamp": _now(), "step": "🔧 工具调用", "detail": f"工具: {name}\n入参: {str(tool_input)[:500]}", "level": "info"})
 
+                # ── 工具执行完毕：日志 + 推送 tool 消息到前端（用于标记 tool-start 完成 + 提取 preview_url） ──
                 elif kind == "on_tool_end":
                     tool_output = data.get("output", "")
-                    yield _sse({"type": "log", "timestamp": _now(), "step": "🔧 工具返回",
-                        "detail": str(tool_output)[:2000], "level": "info"})
-                    # 推送 tool 消息到前端聊天区（用于检测 preview_url 等内嵌内容）
+                    yield _sse({"type": "log", "timestamp": _now(), "step": "🔧 工具返回", "detail": str(tool_output)[:2000], "level": "info"})
                     yield _sse({"type": "msg", "role": "tool", "content": str(tool_output), "name": name})
-                    # 收集 tool 消息
                     collected_messages.append({"role": "tool", "content": str(tool_output), "name": name})
 
             # ── 完成 ──
-            yield _sse({"type": "log", "timestamp": _now(), "step": "执行完成",
-                "detail": f"共 {len(collected_messages)} 条消息", "level": "info"})
+            yield _sse({"type": "log", "timestamp": _now(), "step": "执行完成", "detail": f"共 {len(collected_messages)} 条消息", "level": "info"})
             yield _sse({"type": "done", "thread_id": thread_id})
-
         except Exception as e:
             yield _sse({"type": "log", "timestamp": _now(), "step": "执行失败", "detail": str(e), "level": "error"})
             yield _sse({"type": "error", "message": str(e)})
-
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/logs")
 async def fetch_logs():
-    """Get the most recent execution logs."""
     return {"logs": get_logs()}
 
 
-# ============================================================
-# Conversation History APIs
-# ============================================================
+# ═══════════════════════════════════════ Conversation History ═════════════════════════════
 
 @app.get("/conversations")
 async def list_conversations():
-    """列出所有历史对话（thread_id + 标题）。"""
     import sqlite3
     from pathlib import Path
     from app.agent_setup import get_checkpointer
-
     db_path = str(Path(__file__).parent.parent / "data" / "checkpoints.db")
-    if not Path(db_path).exists():
-        return {"conversations": []}
-
+    if not Path(db_path).exists(): return {"conversations": []}
     conn = sqlite3.connect(db_path)
-    try:
-        cur = conn.execute("SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id")
-        thread_ids = [r[0] for r in cur.fetchall()]
-    finally:
-        conn.close()
-
+    try: thread_ids = [r[0] for r in conn.execute("SELECT DISTINCT thread_id FROM checkpoints ORDER BY thread_id").fetchall()]
+    finally: conn.close()
     checkpointer = await get_checkpointer()
-
     conversations = []
     for tid in thread_ids:
         try:
             result = await checkpointer.aget_tuple({"configurable": {"thread_id": tid}})
-            if not result:
-                continue
-
-            cp = result.checkpoint
-            msgs = cp.get("channel_values", {}).get("messages", [])
-            msg_count = len(msgs)
-            created_at = cp.get("ts", "")
-
-            # Get title from first human message
+            if not result: continue
+            cp = result.checkpoint; msgs = cp.get("channel_values", {}).get("messages", [])
+            msg_count = len(msgs); created_at = cp.get("ts", "")
             title = "(空对话)"
             for m in msgs:
-                mtype = getattr(m, "type", "")
-                if mtype == "human":
-                    title = str(getattr(m, "content", ""))[:50]
-                    break
-
-            # Count checkpoints
+                if getattr(m, "type", "") == "human": title = str(getattr(m, "content", ""))[:50]; break
             conn2 = sqlite3.connect(db_path)
-            try:
-                cur = conn2.execute("SELECT COUNT(*) FROM checkpoints WHERE thread_id = ?", (tid,))
-                cp_count = cur.fetchone()[0]
-            finally:
-                conn2.close()
-
-            conversations.append({
-                "thread_id": tid,
-                "title": title,
-                "msg_count": msg_count,
-                "checkpoint_count": cp_count,
-                "created_at": created_at,
-            })
-        except Exception:
-            continue
-
-    # Sort by created_at descending (newest first)
+            try: cp_count = conn2.execute("SELECT COUNT(*) FROM checkpoints WHERE thread_id = ?", (tid,)).fetchone()[0]
+            finally: conn2.close()
+            conversations.append({"thread_id": tid, "title": title, "msg_count": msg_count, "checkpoint_count": cp_count, "created_at": created_at})
+        except Exception: continue
     conversations.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return {"conversations": conversations}
 
 
 @app.get("/conversations/{thread_id}")
 async def get_conversation(thread_id: str):
-    """获取指定对话的完整消息历史。"""
     from app.agent_setup import get_checkpointer
-
     try:
         checkpointer = await get_checkpointer()
-        config = {"configurable": {"thread_id": thread_id}}
-        result = await checkpointer.aget_tuple(config)
-
-        if not result:
-            raise HTTPException(status_code=404, detail="对话不存在")
-
+        result = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
+        if not result: raise HTTPException(status_code=404, detail="对话不存在")
         msgs = result.checkpoint.get("channel_values", {}).get("messages", [])
         messages = []
         for m in msgs:
-            entry = {
-                "role": getattr(m, "type", "unknown"),
-                "content": getattr(m, "content", ""),
-            }
-            name = getattr(m, "name", None)
-            if name:
-                entry["name"] = name
-            tc = getattr(m, "tool_calls", None)
-            if tc:
-                entry["tool_calls"] = tc
-            tc_id = getattr(m, "tool_call_id", None)
-            if tc_id:
-                entry["tool_call_id"] = tc_id
+            entry = {"role": getattr(m, "type", "unknown"), "content": getattr(m, "content", "")}
+            for attr in ("name", "tool_calls", "tool_call_id"):
+                v = getattr(m, attr, None)
+                if v: entry[attr] = v
             messages.append(entry)
-
         return {"thread_id": thread_id, "messages": messages}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException: raise
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/conversations/{thread_id}")
 async def delete_conversation(thread_id: str):
-    """删除指定对话及其所有 checkpoints。"""
     from app.agent_setup import get_checkpointer
-
     try:
         checkpointer = await get_checkpointer()
         await checkpointer.adelete_thread(thread_id)
         return {"status": "deleted", "thread_id": thread_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))

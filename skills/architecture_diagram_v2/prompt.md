@@ -70,25 +70,16 @@ scene: 产品架构梳理、技术架构汇报、系统分层拆解、业务流�
 提取系统名称、架构类型、需要展示的模块、特殊样式要求；
 ## Step2：自主拆解完整架构模块树
 梳理每层包含的子模块、模块功能说明；
-## Step3：生成完整可独立运行HTML字符串
-严格遵循上文编码规范，内置全部样式、分层模块；
-## Step4：调用工具 generate_architecture_diagram_v2 传参规则
-### 参数必填/可选说明
-1. user_request【必填】：用户原始完整提问文本；
-2. html_content【核心推荐传入】：Step3生成的完整HTML全文字符串；
-3. title【推荐传入】：架构图完整标题，无则自动从user_request截取生成；
-4. output_name【可选】：自定义输出html文件名，默认architecture；
-
-### 调用示例模板
-```
-generate_architecture_diagram_v2(
-    user_request="绘制微信完整宏观产品架构图",
-    html_content="<!DOCTYPE html><html lang='zh-CN'>...完整代码...</html>",
-    title="微信宏观产品架构图",
-    output_name="wechat_arch"
-)
-```
-## Step5：工具执行完成后，标准化回复用户
+## Step3：按需获取模板（调用 get_architecture_template）
+根据架构类型选择模板：
+- product_arch（四层产品架构/Flex纵向）— 默认首选
+- microservice（微服务网格/Grid）— 后端技术架构
+- topology（分布式拓扑/绝对定位连线）— 数据流/依赖关系
+## Step4：基于模板定制生成完整HTML字符串
+基于模板内容，按用户需求替换模块名称、增删层级、调整配色，严格遵循第四节编码规范；
+## Step5：调用 generate_architecture_diagram_v2 保存并预览
+按 tools.json 声明的参数 schema 传入 user_request、html_content、title、output_name；
+## Step6：工具执行完成后，标准化回复用户
 1. 文本解读：分层文字说明架构设计逻辑、每层核心作用；
 2. 返回预览地址：架构文件本地预览链接 /outputs/{output_name}.html；
 3. 使用提示：页面预览后可直接导出高清PNG图片。
@@ -106,130 +97,5 @@ generate_architecture_diagram_v2(
 2. 若生成HTML校验不完整，自动补全文档结构后再调用工具；
 3. 用户要求深色/科技渐变风格时，可替换全套配色，保留分层逻辑不变。
 
-# 七、内置参考模板（快速复用，按需修改模块名称）
-## 模板1：四层纵向产品架构（默认首选）
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{替换为架构标题}</title>
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            background: #f5f6fa; min-height: 100vh; padding: 40px 20px;
-        }
-        .container { max-width: 1400px; margin:0 auto; }
-        .main-title {
-            text-align: center; font-size: 32px; font-weight: 700; color: #1a1a2e;
-            margin-bottom: 40px; letter-spacing: 1px;
-        }
-        .layer {
-            border-radius: 12px; border: 2px solid; padding: 24px; margin-bottom: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .layer-terminal { background:#e8f5e9; border-color:#81c784; }
-        .layer-business { background:#e3f2fd; border-color:#64b5f6; }
-        .layer-middleware { background:#f3e5f5; border-color:#ba68c8; }
-        .layer-infra { background:#fff3e0; border-color:#ffb74d; }
-        .layer-title {
-            font-size: 18px; font-weight: 700; margin-bottom: 16px;
-            padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.1);
-        }
-        .cards { display: flex; flex-wrap: wrap; gap: 12px; }
-        .card {
-            flex: 1 1 200px; min-width: 160px; max-width: 280px;
-            background: #fff; border-radius: 8px; padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-            transition: transform 0.2s ease;
-        }
-        .card:hover { transform: translateY(-3px); }
-        .card-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 4px; }
-        .card-desc { font-size: 12px; color: #999; line-height: 1.5; }
-        .footer-note {
-            text-align: center; margin-top: 40px; font-size: 12px; color: #aaa;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="main-title">{替换为架构标题}</div>
-        <!-- 终端接入层 -->
-        <div class="layer layer-terminal">
-            <div class="layer-title" style="color:#2e7d32;">终端/接入层</div>
-            <div class="cards">
-                <!-- 替换自定义模块 -->
-                <div class="card"><div class="card-title">模块名称</div><div class="card-desc">模块功能简述</div></div>
-            </div>
-        </div>
-        <!-- 核心业务应用层 -->
-        <div class="layer layer-business">
-            <div class="layer-title" style="color:#1565c0;">核心业务应用层</div>
-            <div class="cards">
-                <!-- 替换自定义模块 -->
-            </div>
-        </div>
-        <!-- 中台能力层 -->
-        <div class="layer layer-middleware">
-            <div class="layer-title" style="color:#7b1fa2;">公共中台能力层</div>
-            <div class="cards">
-                <!-- 替换自定义模块 -->
-            </div>
-        </div>
-        <!-- 底层底座层 -->
-        <div class="layer layer-infra">
-            <div class="layer-title" style="color:#e65100;">基础技术底座层</div>
-            <div class="cards">
-                <!-- 替换自定义模块 -->
-            </div>
-        </div>
-        <div class="footer-note">基于公开行业信息梳理的通用宏观架构</div>
-    </div>
-</body>
-</html>
-```
-
-## 模板2：微服务Grid网格科技风（用户要求后端技术架构时使用）
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>微服务架构图</title>
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh; padding: 40px 20px;
-        }
-        .container { max-width: 1400px; margin:0 auto; background: rgba(255,255,255,0.95); border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-        h1 { text-align: center; color: #333; margin-bottom: 40px; font-size: 36px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-        .service {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff; border-radius: 12px; padding: 24px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.3s;
-        }
-        .service:hover { transform: translateY(-5px); }
-        .service h3 { font-size: 18px; margin-bottom: 8px; }
-        .service p { font-size: 13px; opacity: 0.9; }
-        .gateway { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-        .db { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>微服务系统架构图</h1>
-        <div class="grid">
-            <div class="service gateway"><h3>API Gateway</h3><p>负载均衡、路由、限流熔断</p></div>
-            <!-- 自定义业务服务模块 -->
-            <div class="service db"><h3>数据存储集群</h3><p>MySQL、Redis、分库分表</p></div>
-        </div>
-    </div>
-</body>
-</html>
-```
+# 七、模板按需加载机制
+HTML 模板已外置为独立工具 get_architecture_template，LLM 通过 Function Calling 按需调用，模板内容注入到对话上下文后才进行定制修改。这避免了每次请求都加载全部模板的 token 浪费，同时保留 LLM 对模板的完全控制权（可任意修改层级、模块、配色、布局）。

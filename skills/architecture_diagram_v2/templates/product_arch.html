@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{替换为架构标题}</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #f5f6fa; min-height: 100vh; padding: 40px 20px;
+        }
+        .container { max-width: 1400px; margin:0 auto; }
+        .main-title {
+            text-align: center; font-size: 32px; font-weight: 700; color: #1a1a2e;
+            margin-bottom: 40px; letter-spacing: 1px;
+        }
+        .layer {
+            border-radius: 12px; border: 2px solid; padding: 24px; margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .layer-terminal { background:#e8f5e9; border-color:#81c784; }
+        .layer-business { background:#e3f2fd; border-color:#64b5f6; }
+        .layer-middleware { background:#f3e5f5; border-color:#ba68c8; }
+        .layer-infra { background:#fff3e0; border-color:#ffb74d; }
+        .layer-title {
+            font-size: 18px; font-weight: 700; margin-bottom: 16px;
+            padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        .cards { display: flex; flex-wrap: wrap; gap: 12px; }
+        .card {
+            flex: 1 1 200px; min-width: 160px; max-width: 280px;
+            background: #fff; border-radius: 8px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease;
+        }
+        .card:hover { transform: translateY(-3px); }
+        .card-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 4px; }
+        .card-desc { font-size: 12px; color: #999; line-height: 1.5; }
+        .footer-note {
+            text-align: center; margin-top: 40px; font-size: 12px; color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-title">{替换为架构标题}</div>
+        <!-- 终端接入层 -->
+        <div class="layer layer-terminal">
+            <div class="layer-title" style="color:#2e7d32;">终端/接入层</div>
+            <div class="cards">
+                <!-- 替换自定义模块 -->
+                <div class="card"><div class="card-title">模块名称</div><div class="card-desc">模块功能简述</div></div>
+            </div>
+        </div>
+        <!-- 核心业务应用层 -->
+        <div class="layer layer-business">
+            <div class="layer-title" style="color:#1565c0;">核心业务应用层</div>
+            <div class="cards">
+                <!-- 替换自定义模块 -->
+            </div>
+        </div>
+        <!-- 中台能力层 -->
+        <div class="layer layer-middleware">
+            <div class="layer-title" style="color:#7b1fa2;">公共中台能力层</div>
+            <div class="cards">
+                <!-- 替换自定义模块 -->
+            </div>
+        </div>
+        <!-- 底层底座层 -->
+        <div class="layer layer-infra">
+            <div class="layer-title" style="color:#e65100;">基础技术底座层</div>
+            <div class="cards">
+                <!-- 替换自定义模块 -->
+            </div>
+        </div>
+        <div class="footer-note">基于公开行业信息梳理的通用宏观架构</div>
+    </div>
+</body>
+</html>
