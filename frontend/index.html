@@ -84,10 +84,8 @@
         @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
         .msg-label { font-size: 12px; color: #475569; margin-bottom: 5px; font-weight: 600; padding-left: 2px; }
 
-        /* 工具调用：旋转加载动画 */
         .tool-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #a5b4fc; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        /* 工具调用完成：绿色勾 */
         .tool-check { display: inline-block; color: #10b981; font-weight: 700; margin-right: 6px; vertical-align: middle; }
 
         .diagram-container { margin-top: 12px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border: 2px solid #e2e8f0; }
@@ -225,7 +223,7 @@
                     const formatted = [];
                     for (const m of msgs) {
                         const role = m.role === 'human' ? 'user' : m.role === 'ai' ? 'assistant' : m.role;
-                        if (role === 'tool') continue;  // 历史对话中跳过 tool 消息
+                        if (role === 'tool') continue;
                         if (role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
                             for (const tc of m.tool_calls) {
                                 const tcName = tc.name || tc.function?.name || '?';
@@ -262,15 +260,11 @@
             const deleteSkill = useCallback(async (name) => { try { await api(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }); setSkills(await api('/skills')); setSkillEnabled({}); showToast('🗑️ 技能已删除'); } catch (err) { showToast('❌ ' + err.message); } }, [showToast]);
             const savePrompt = useCallback(async () => { try { await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) }); showToast('✅ 提示词已保存'); } catch (err) { showToast('❌ ' + err.message); } }, [prompt, showToast]);
 
-            // ═══════════════════════════════════════════════════════════════
-            // runAgent — SSE 流式执行 Agent，实时更新聊天区
-            // ═══════════════════════════════════════════════════════════════
             const runAgent = useCallback(async () => {
                 if (!chatInput.trim()) return;
                 const userMsg = { role: 'user', content: chatInput };
-                setChatMessages(prev => [...prev, userMsg]); setChatInput(''); setRunning(true); setLogs([]); setLogOpen(true);
+                setChatMessages(prev => [...prev, userMsg]); setChatInput(''); setRunning(true); setLogOpen(true);
                 const thinkingKey = Date.now();
-                // 初始"思考中"占位，第一条消息到达时自动移除
                 setChatMessages(prev => [...prev, { role: 'thinking', content: '⏳ 思考中...', _key: thinkingKey }]);
                 try {
                     const response = await fetch(`${API_BASE}/run-stream`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_name: selectedModel, api_key: selectedApiKey, base_url: selectedBaseUrl, system_prompt: prompt, skills: enabledSkills.map(([n]) => n), max_iterations: 10, input: userMsg.content, thread_id: threadId }) });
@@ -287,22 +281,16 @@
                                 if (line.startsWith('data: ')) {
                                     try {
                                         const evt = JSON.parse(line.slice(6));
-                                        // 日志事件 → 追加到日志抽屉
                                         if (evt.type === 'log') { setLogs(prev => [...prev, { step: evt.step, detail: evt.detail, level: evt.level, timestamp: evt.timestamp }]); }
-                                        // 消息事件 → 更新聊天区
                                         else if (evt.type === 'msg') {
                                             setChatMessages(prev => {
-                                                // 移除所有"思考中"占位
                                                 const filtered = prev.filter(m => m.role !== 'thinking');
-                                                // tool 结果：标记 tool-start 完成 + 提取 preview_url（用于架构图 iframe）
                                                 if (evt.role === 'tool') {
                                                     let previewUrl = null;
                                                     try { const o = JSON.parse(evt.content); if (o.preview_url) previewUrl = o.preview_url; } catch {}
                                                     const updated = filtered.map(m => { if (m.role === 'tool-start' && m.name === evt.name && !m._completed) return { ...m, _completed: true, _previewUrl: previewUrl }; return m; });
-                                                    // 工具返回后添加"思考中"占位，等待下一轮模型响应
                                                     return [...updated, { role: 'thinking', content: '⏳ 思考中...', _key: Date.now() }];
                                                 }
-                                                // 新消息到达时，自动标记所有未完成的 tool-start 为已完成（兜底机制）
                                                 const autoCompleted = filtered.map(m => { if (m.role === 'tool-start' && !m._completed) return { ...m, _completed: true }; return m; });
                                                 return [...autoCompleted, { role: evt.role, content: evt.content, name: evt.name }];
                                             });
@@ -354,7 +342,6 @@
                         <div className="chat-area">
                             <div className="chat-messages">
                                 {chatMessages.length === 0 && (<div className="welcome"><h2>🤖 LangGraph Agent</h2><p>配置好左侧的模型、工具和提示词<br />在下方输入问题开始对话<br /><br /><span style={{ fontSize: '11px', color: '#3a4a6a' }}>当前: {selectedModel || '未选择模型'}{activeSkillCount > 0 ? ` · ${activeSkillCount} 个技能` : ''}</span></p></div>)}
-                                {/* 消息渲染：过滤掉 tool 角色，只显示 user / assistant / tool-start / thinking */}
                                 {chatMessages.filter(msg => msg.role !== 'tool').map((msg, i) => {
                                     const isThinking = msg.role === 'thinking';
                                     const cls = msg.role === 'user' ? 'user' : msg.role === 'tool-start' ? 'tool-start' : isThinking ? 'thinking' : 'assistant';
@@ -364,11 +351,9 @@
                                     <div key={i} className={`msg ${cls}`}>
                                         {!isThinking && <div className="msg-label">{label}</div>}
                                         <div className="msg-bubble">
-                                            {/* 工具调用状态：未完成显示 spinner，已完成显示 ✅ */}
                                             {msg.role === 'tool-start' && !msg._completed && <span className="tool-spinner" />}
                                             {msg.role === 'tool-start' && msg._completed && <span className="tool-check">✅</span>}
                                             {msg.content}
-                                            {/* 架构图预览 iframe */}
                                             {diagramUrl && (<div className="diagram-container"><div className="diagram-header"><span>📊 架构图预览</span><button className="diagram-open-btn" onClick={() => window.open(diagramUrl, '_blank')}> 新窗口打开</button></div><iframe src={diagramUrl} className="diagram-iframe" title="architecture-diagram" /></div>)}
                                         </div>
                                     </div>);

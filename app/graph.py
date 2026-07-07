@@ -38,7 +38,7 @@ async def build_workflow(config: dict):
     """
     构建单图编排工作流：START → route → agent → END。
 
-    route 节点：技能发现（LLM Function Calling），注入 SystemMessage
+    route 节点：首次对话执行技能发现（LLM Function Calling），后续轮次复用已选技能
     agent 节点：create_react_agent 子图，绑定全部技能的工具
     """
     system_prompt = config.get("system_prompt", "")
@@ -65,6 +65,13 @@ async def build_workflow(config: dict):
 
     # ── 路由节点 ──
     async def route_node(state: OrchestratorState):
+        # 已有选中的技能（来自上一轮对话）→ 直接复用，不重新路由，不重复注入 prompt
+        existing_skills = state.get("selected_skills", [])
+        if existing_skills:
+            add_log("🧠 技能复用", f"沿用上一轮选中的技能: {existing_skills}")
+            return {"selected_skills": existing_skills}
+
+        # 首次对话：执行路由发现
         messages = state.get("messages", [])
         user_input = ""
         for m in reversed(messages):
@@ -96,7 +103,7 @@ async def build_workflow(config: dict):
 
         return {"selected_skills": routed_skills, "messages": new_msgs}
 
-    # ── 组装外层图 ──
+    # ── 组装外层图：START → route → agent → END ──
     graph = StateGraph(OrchestratorState)
     graph.add_node("route", route_node)
     graph.add_node("agent", agent_subgraph)
