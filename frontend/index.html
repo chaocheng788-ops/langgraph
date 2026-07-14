@@ -140,6 +140,21 @@
         .json-null { color: #94a3b8; }
         .json-brace { color: #fde68a; }
 
+        /* ── 架构图表单样式 ── */
+        .arch-form-container { background: #fff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-top: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+        .arch-form-title { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+        .arch-form-desc { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+        .arch-form-field { margin-bottom: 14px; }
+        .arch-form-field label { display: block; font-size: 12px; color: #334155; margin-bottom: 5px; font-weight: 600; }
+        .arch-form-field input[type="text"],
+        .arch-form-field select { width: 100%; padding: 9px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; font-size: 13px; outline: none; transition: all 0.2s; font-family: inherit; }
+        .arch-form-field input[type="text"]:focus,
+        .arch-form-field select:focus { border-color: #667eea; background: #fff; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+        .arch-form-field input::placeholder { color: #94a3b8; }
+        .arch-form-submit { width: 100%; padding: 10px 0; border: none; border-radius: 10px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.25s; box-shadow: 0 4px 14px rgba(102,126,234,0.35); letter-spacing: 0.5px; }
+        .arch-form-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.45); }
+        .arch-form-required { color: #ef4444; margin-left: 2px; }
+
         @media (max-width: 768px) { .sidebar { width: 280px; } }
     </style>
 </head>
@@ -159,6 +174,74 @@
 
         function highlightJSON(jsonStr) {
             return jsonStr.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:').replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span class="json-string">$1</span>').replace(/:\s*(\d+\.?\d*)/g, ': <span class="json-number">$1</span>').replace(/:\s*(true|false)/g, ': <span class="json-bool">$1</span>').replace(/:\s*(null)/g, ': <span class="json-null">$1</span>').replace(/([\[\]{}])/g, '<span class="json-brace">$1</span>');
+        }
+
+        function parseFormJSON(content) {
+            const jsonMatch = content.match(/```json\s*\n([\s\S]*?)\n```/);
+            if (!jsonMatch) return null;
+            try {
+                const parsed = JSON.parse(jsonMatch[1]);
+                if (parsed.form_type === 'architecture_diagram_config') return parsed;
+                return null;
+            } catch { return null; }
+        }
+
+        function stripFormJSON(content) {
+            return content.replace(/```json\s*\n[\s\S]*?```/, '').trim();
+        }
+
+        function ArchDiagramForm({ formData, onSubmit }) {
+            const [values, setValues] = React.useState(() => {
+                const init = {};
+                Object.entries(formData.fields).forEach(([key, field]) => {
+                    init[key] = field.value || field.default || '';
+                });
+                return init;
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const productName = values.product_name || '';
+                if (!productName.trim()) return;
+                const archTypeMap = { product_arch: '产品分层架构', microservice: '微服务架构', topology: '分布式拓扑' };
+                const styleMap = { business: '商务极简风', dark_tech: '深色科技风' };
+                const archType = archTypeMap[values.arch_type] || values.arch_type || '产品分层架构';
+                const modules = values.modules ? '，核心模块包括' + values.modules : '';
+                const style = styleMap[values.visual_style] || values.visual_style || '商务极简风';
+                const message = '为【' + productName + '】生成' + archType + '图' + modules + '，使用' + style + '风格';
+                onSubmit(message);
+            };
+
+            const fields = formData.fields || {};
+            return React.createElement('div', { className: 'arch-form-container' },
+                React.createElement('div', { className: 'arch-form-title' }, formData.title || '配置表单'),
+                formData.description ? React.createElement('div', { className: 'arch-form-desc' }, formData.description) : null,
+                React.createElement('form', { onSubmit: handleSubmit },
+                    Object.entries(fields).map(([key, field]) =>
+                        React.createElement('div', { key: key, className: 'arch-form-field' },
+                            React.createElement('label', null, field.label, field.required ? React.createElement('span', { className: 'arch-form-required' }, '*') : null),
+                            field.type === 'select'
+                                ? React.createElement('select', {
+                                    value: values[key],
+                                    onChange: e => setValues({ ...values, [key]: e.target.value })
+                                }, (field.options || []).map(opt =>
+                                    React.createElement('option', { key: opt.value, value: opt.value }, opt.label)
+                                ))
+                                : React.createElement('input', {
+                                    type: 'text',
+                                    value: values[key],
+                                    onChange: e => setValues({ ...values, [key]: e.target.value }),
+                                    placeholder: field.placeholder || ''
+                                })
+                        )
+                    ),
+                    React.createElement('button', {
+                        type: 'submit',
+                        className: 'arch-form-submit',
+                        disabled: !values.product_name?.trim()
+                    }, '✅ 生成架构图')
+                )
+            );
         }
 
         function LogDetail({ text }) {
@@ -260,9 +343,10 @@
             const deleteSkill = useCallback(async (name) => { try { await api(`/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }); setSkills(await api('/skills')); setSkillEnabled({}); showToast('🗑️ 技能已删除'); } catch (err) { showToast('❌ ' + err.message); } }, [showToast]);
             const savePrompt = useCallback(async () => { try { await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) }); showToast('✅ 提示词已保存'); } catch (err) { showToast('❌ ' + err.message); } }, [prompt, showToast]);
 
-            const runAgent = useCallback(async () => {
-                if (!chatInput.trim()) return;
-                const userMsg = { role: 'user', content: chatInput };
+            const runAgent = useCallback(async (inputOverride) => {
+                const input = inputOverride !== undefined ? inputOverride : chatInput;
+                if (!input.trim()) return;
+                const userMsg = { role: 'user', content: input };
                 setChatMessages(prev => [...prev, userMsg]); setChatInput(''); setRunning(true); setLogOpen(true);
                 const thinkingKey = Date.now();
                 setChatMessages(prev => [...prev, { role: 'thinking', content: '⏳ 思考中...', _key: thinkingKey }]);
@@ -347,13 +431,16 @@
                                     const cls = msg.role === 'user' ? 'user' : msg.role === 'tool-start' ? 'tool-start' : isThinking ? 'thinking' : 'assistant';
                                     const label = msg.role === 'user' ? '你' : msg.role === 'tool-start' ? '工具调用' : isThinking ? '' : 'AI';
                                     const diagramUrl = msg._previewUrl || null;
+                                    const formJson = msg.role === 'assistant' ? parseFormJSON(msg.content) : null;
+                                    const displayContent = formJson ? stripFormJSON(msg.content) : msg.content;
                                     return (
                                     <div key={i} className={`msg ${cls}`}>
                                         {!isThinking && <div className="msg-label">{label}</div>}
                                         <div className="msg-bubble">
                                             {msg.role === 'tool-start' && !msg._completed && <span className="tool-spinner" />}
                                             {msg.role === 'tool-start' && msg._completed && <span className="tool-check">✅</span>}
-                                            {msg.content}
+                                            {displayContent}
+                                            {formJson && <ArchDiagramForm formData={formJson} onSubmit={(msgText) => { setChatInput(msgText); runAgent(msgText); }} />}
                                             {diagramUrl && (<div className="diagram-container"><div className="diagram-header"><span>📊 架构图预览</span><button className="diagram-open-btn" onClick={() => window.open(diagramUrl, '_blank')}> 新窗口打开</button></div><iframe src={diagramUrl} className="diagram-iframe" title="architecture-diagram" /></div>)}
                                         </div>
                                     </div>);
