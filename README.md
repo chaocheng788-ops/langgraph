@@ -1,18 +1,19 @@
 # LangGraph Agent Platform
 
-基于 LangGraph + FastAPI 的 AI Agent 可视化编排平台，支持流式对话、工具调用、多轮历史持久化。
+基于 LangGraph + FastAPI 的 AI Agent 可视化编排平台，支持流式对话、工具调用、多轮历史持久化、本地 RAG 知识库。
 
 ## 功能特性
 
 - **可视化前端**：模型配置、工具管理、提示词编辑、实时对话
 - **流式交互**：SSE 实时推送日志和 AI 响应，逐条展示
-- **7 个 Skill**：内置 7 个可路由 Skill（网页搜索、计算器、摘要、翻译、情感分析、天气查询、架构图生成），支持 Function Calling 路由
+- **Skill 路由**：内置 2 个 Skill（架构图生成、知识库 RAG），支持 Function Calling 自动路由
+- **RAG 知识库**：基于 FAISS + SQLite 的本地向量检索，支持 Markdown 文档智能切分入库、语义搜索
 - **动态工具**：支持 HTTP API 工具配置，Echo 回退工具兜底
-- **架构图生成**：自然语言描述 → Mermaid 架构图 HTML，自动浏览器打开，支持 /outputs/ 静态访问
+- **架构图生成**：自然语言描述 → HTML 架构图，自动浏览器打开，支持 /outputs/ 静态访问
 - **多轮对话**：基于 SQLite + AsyncSqliteSaver 持久化上下文，跨请求保持会话
 - **历史管理**：右上角下拉面板查看/加载/删除历史对话
 - **日志抽屉**：可拖拽调整宽度，查看模型请求/响应、工具调用/返回详情
-- **模块化架构**：app/ 拆分为 11 个模块文件，职责清晰、易于维护
+- **模块化架构**：app/ 拆分为多个模块文件，职责清晰、易于维护
 
 ## 目录结构
 
@@ -42,23 +43,26 @@ langgraph/
 ├── frontend/
 │   └── index.html              # 单页前端（React + Babel）
 ├── skills/                     # Skill 插件目录
-│   ├── architect/              # 架构图生成 Skill
-│   │   ├── skill.json          # Skill 元信息
-│   │   ├── prompt.md           # Mermaid 语法指南
-│   │   └── tool.py             # render_diagram / render_diagram_svg 工具
-│   ├── calculator/             # 数学计算 Skill
-│   ├── search/                 # 网页搜索 Skill
-│   ├── sentiment/              # 情感分析 Skill
-│   ├── summarize/              # 文本摘要 Skill
-│   ├── translate/              # 翻译 Skill
-│   └── weather/                # 天气查询 Skill
+│   ├── architecture_diagram_v2/ # 架构图生成 Skill
+│   │   ├── prompt.md           # 技能提示词
+│   │   ├── tools.json          # 工具声明
+│   │   ├── tool.py             # 工具实现
+│   │   └── templates/          # HTML 模板
+│   └── knowledge_base/         # RAG 知识库 Skill
+│       ├── prompt.md           # 技能提示词
+│       ├── tools.json          # 工具声明（add_knowledge / search_knowledge）
+│       └── tool.py             # FAISS + SQLite + Embedding + 工具实现
 ├── outputs/                    # 架构图等生成文件（HTML + .mmd）
 ├── scripts/
 │   ├── start.ps1               # PowerShell 启动脚本
 │   └── start.bat               # Batch 启动脚本
-└── data/
+├── data/
     ├── models.json             # 模型配置（持久化存储）
     ├── tools.json              # 工具配置（持久化存储）
+    ├── prompt.json             # 系统提示词（持久化存储）
+    ├── skills.json             # 前端创建的技能（持久化存储）
+    ├── knowledge.db            # 知识库 SQLite 元数据（自动生成）
+    ├── knowledge.index         # 知识库 FAISS 向量索引（自动生成）
     ├── checkpoints.db          # SQLite 对话上下文数据库（自动生成）
     ├── checkpoints.db-shm      # SQLite 共享内存文件
     └── checkpoints.db-wal      # SQLite WAL 预写日志
@@ -123,6 +127,8 @@ python main.py
 | `httpx` | >=0.25.0 | HTTP 客户端 |
 | `aiosqlite` | >=0.20.0 | 异步 SQLite 驱动（Checkpointer 需要） |
 | `msgpack` | >=1.0 | Checkpoint 二进制序列化 |
+| `faiss-cpu` | >=1.8.0 | FAISS 向量索引（知识库 RAG 检索） |
+| `sentence-transformers` | >=3.0.0 | 文本 Embedding 模型（bge-small-zh-v1.5） |
 
 ## 启动服务
 
@@ -153,13 +159,8 @@ Skill 支持路由模式：路由 LLM 根据用户意图自动选择最合适的
 
 | Skill | 工具函数 | 功能 |
 |--------|---------|------|
-| `architect` | `render_diagram`, `render_diagram_svg` | 架构图生成：自然语言 → Mermaid 图表 HTML，自动浏览器打开 |
-| `calculator` | `calculator` | 安全数学表达式计算 |
-| `search` | `search_web` | 模拟网页搜索 |
-| `sentiment` | `analyze_sentiment` | 情感分析（积极/消极/中性） |
-| `summarize` | `summarize` | 文本摘要 |
-| `translate` | `translate` | 多语言翻译 |
-| `weather` | `get_weather` | 天气查询（8 个内置城市真实数据） |
+| `architecture_diagram_v2` | `get_architecture_template`, `generate_architecture_diagram_v2` | 架构图生成：自然语言 → HTML 架构图，自动浏览器打开 |
+| `knowledge_base` | `add_knowledge`, `search_knowledge` | RAG 知识库：FAISS 向量检索 + SQLite 元数据，支持 Markdown 文档智能切分 |
 
 ### 内置工具（builtin_tools.py）
 
@@ -170,7 +171,32 @@ Skill 支持路由模式：路由 LLM 根据用户意图自动选择最合适的
 | `summarize` | `summarize` | - | 文本摘要 |
 | `translate` | `translate` | - | 多语言翻译 |
 | `sentiment` | `analyze_sentiment` | `analyze_sentiment` | 情感分析 |
-| `weather` | `get_weather` | `get_weather` | 天气查询（8 个内置城市真实数据 + 随机模拟） |
+| `weather` | `get_weather` | `get_weather` | 天气查询 |
+| `get_architecture_template` | `get_architecture_template` | - | 按需加载架构图 HTML 模板 |
+| `generate_architecture_diagram_v2` | `generate_architecture_diagram_v2` | - | 生成并保存架构图 HTML |
+| `add_knowledge` | `add_knowledge` | - | 文档入库：切分 → Embedding → FAISS + SQLite |
+| `search_knowledge` | `search_knowledge` | - | 语义搜索：Embedding → FAISS 检索 → SQLite 查原文 |
+
+### 知识库 RAG（skills/knowledge_base/）
+
+基于 FAISS + SQLite 的本地向量检索知识库，完全自包含在 skill 目录内。
+
+**技术栈**：
+- **Embedding 模型**：`BAAI/bge-small-zh-v1.5`（智源中文语义模型，512 维，100MB）
+- **向量索引**：FAISS IndexFlatIP（内积精确搜索）
+- **元数据存储**：SQLite（文档标题、原文、来源、时间戳）
+- **文本切分**：Markdown 感知切分，按 `#` 标题分节，每节内 ≤500 字
+
+**核心流程**：
+```
+入库: add_knowledge → Markdown 切分 → bge Embedding → SQLite + FAISS 双写
+检索: search_knowledge → bge Embedding → FAISS 内积搜索 → SQLite 查原文
+```
+
+**使用方式**：
+1. 前端左侧「技能」标签页开启 `knowledge_base`
+2. 对话中输入 `把以下内容加入知识库，标题：xxx` 即可入库
+3. 提问时 Agent 自动调用 `search_knowledge` 检索并基于结果回答
 
 ### 工具配置（data/tools.json）
 

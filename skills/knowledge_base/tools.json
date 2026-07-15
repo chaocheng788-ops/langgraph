@@ -1,0 +1,42 @@
+[
+  {
+    "name": "search_knowledge",
+    "description": "语义搜索知识库，根据用户问题查找相关文档片段。调用前先分析用户问题提取关键词，再传入 query 参数进行搜索。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "搜索关键词或问题，如'迟到几次算旷工'"
+        },
+        "top_k": {
+          "type": "integer",
+          "description": "返回结果数量，默认 5"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  {
+    "name": "add_knowledge",
+    "description": "添加文档到知识库。用户要求将某段内容、文档、制度、手册等加入知识库时调用此工具。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "文档标题，如'考勤管理制度'、'产品手册'"
+        },
+        "content": {
+          "type": "string",
+          "description": "文档正文内容"
+        },
+        "source": {
+          "type": "string",
+          "description": "文档来源，可选，如 URL 或文件名"
+        }
+      },
+      "required": ["title", "content"]
+    }
+  }
+]

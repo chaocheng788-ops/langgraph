@@ -294,6 +294,8 @@
             const draggingRef = useRef(false);
             const chatEndRef = useRef(null);
             const logEndRef = useRef(null);
+            // 用 ref 存储输入框最新值，避免 runAgent 闭包陷阱（大文本输入时 state 可能滞后）
+            const chatInputRef = useRef('');
 
             const showToast = useCallback((msg) => { setToast({ msg, show: true }); setTimeout(() => setToast({ msg: '', show: false }), 2500); }, []);
             const loadConversations = useCallback(async () => { try { const d = await api('/conversations'); setConversations(d.conversations || []); } catch {} }, []);
@@ -344,10 +346,12 @@
             const savePrompt = useCallback(async () => { try { await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) }); showToast('✅ 提示词已保存'); } catch (err) { showToast('❌ ' + err.message); } }, [prompt, showToast]);
 
             const runAgent = useCallback(async (inputOverride) => {
-                const input = inputOverride !== undefined ? inputOverride : chatInput;
+                // 优先用传入参数（架构图表单提交），否则从 ref 取最新值（避免 state 闭包问题）
+                const input = inputOverride !== undefined ? inputOverride : chatInputRef.current;
                 if (!input.trim()) return;
                 const userMsg = { role: 'user', content: input };
-                setChatMessages(prev => [...prev, userMsg]); setChatInput(''); setRunning(true); setLogOpen(true);
+                // 发送后清空输入框和 ref
+                setChatMessages(prev => [...prev, userMsg]); setChatInput(''); chatInputRef.current = ''; setRunning(true); setLogOpen(true);
                 const thinkingKey = Date.now();
                 setChatMessages(prev => [...prev, { role: 'thinking', content: '⏳ 思考中...', _key: thinkingKey }]);
                 try {
@@ -388,7 +392,8 @@
                     setChatMessages(prev => prev.filter(m => m._key !== thinkingKey));
                 } catch (err) { setChatMessages(prev => { const f = prev.filter(m => m._key !== thinkingKey); return [...f, { role: 'assistant', content: `❌ 错误: ${err.message}` }]; }); }
                 setRunning(false); loadConversations();
-            }, [chatInput, selectedModel, selectedApiKey, prompt, selectedTools, threadId, loadConversations, enabledSkills]);
+            // 依赖项不含 chatInput（改用 ref）和 selectedTools（未使用），减少不必要的函数重建
+            }, [selectedModel, selectedApiKey, prompt, threadId, loadConversations, enabledSkills]);
 
             const handleKeyDown = useCallback((e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAgent(); } }, [runAgent]);
             const selectModel = useCallback((name) => { setSelectedModelName(name); if (!name) { setSelectedModel(''); setSelectedApiKey(''); setSelectedBaseUrl('https://dashscope.aliyuncs.com/compatible-mode/v1'); } else { const m = models[name]; if (m) { setSelectedModel(m.model_name); setSelectedApiKey(m.api_key || ''); setSelectedBaseUrl(m.base_url || 'https://dashscope.aliyuncs.com/compatible-mode/v1'); } } }, [models]);
@@ -458,7 +463,8 @@
                                     {activeSkillCount === 0 ? <span style={{ fontSize: '11px', color: '#94a3b8' }}>未开启</span> : enabledSkills.map(([name]) => (<span key={name} style={{ fontSize: '11px', padding: '3px 10px', background: '#eef2ff', borderRadius: '8px', color: '#667eea', fontWeight: 600 }}>{name}</span>))}
                                 </div>
                                 <div className="chat-input-row">
-                                    <textarea value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={running ? '运行中...' : '输入你的问题... (Enter 发送, Shift+Enter 换行)'} disabled={running} rows={2} />
+                                    {/* 同时更新 state 和 ref，确保 runAgent 通过 ref 拿到最新值 */}
+                                    <textarea value={chatInput} onChange={e => { setChatInput(e.target.value); chatInputRef.current = e.target.value; }} onKeyDown={handleKeyDown} placeholder={running ? '运行中...' : '输入你的问题... (Enter 发送, Shift+Enter 换行)'} disabled={running} rows={2} />
                                     <button className="chat-run-btn" onClick={runAgent} disabled={running || !chatInput.trim()}>{running ? '⏳ 运行中' : '▶ 运行'}</button>
                                 </div>
                             </div>

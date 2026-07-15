@@ -8,9 +8,10 @@
 import random  # 用于非内置城市的随机模拟
 
 from skills.architecture_diagram_v2.tool import (
-    generate_architecture_diagram_v2,
-    get_architecture_template,
+    generate_architecture_diagram_v2,  # 架构图生成并保存
+    get_architecture_template,        # 按需加载 HTML 模板
 )
+from skills.knowledge_base.tool import add_knowledge, search_knowledge  # 知识库 RAG 工具（FAISS + SQLite）
 
 
 def search_web(query: str) -> str:
@@ -116,4 +117,7 @@ BUILTIN_TOOLS = {
     # ── 架构图工具 v2 ──
     "get_architecture_template": get_architecture_template,       # 按需加载模板
     "generate_architecture_diagram_v2": generate_architecture_diagram_v2,  # 保存并预览
+    # ── 知识库 RAG 工具（FAISS 向量检索 + SQLite 元数据存储）──
+    "add_knowledge": add_knowledge,         # 文档入库：切分 → Embedding → FAISS + SQLite
+    "search_knowledge": search_knowledge,   # 语义搜索：查询 Embedding → FAISS 检索 → SQLite 查原文
 }
