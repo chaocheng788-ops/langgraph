@@ -1,7 +1,7 @@
 """
-LangGraph Workflow Builder — 单图编排：路由节点 + Agent 子图节点。
+LangGraph Workflow Builder — 单图编排：路由节点 + Agent 节点。
 技能路由和 Agent 执行合并到一个 StateGraph 中，
-create_react_agent 作为子图（黑盒节点）嵌入。
+Agent 节点根据路由结果动态绑定仅选中技能的工具。
 """
 from typing import Annotated, Sequence, List
 from typing_extensions import TypedDict
@@ -39,7 +39,7 @@ async def build_workflow(config: dict):
     构建单图编排工作流：START → route → agent → END。
 
     route 节点：首次对话执行技能发现（LLM Function Calling），后续轮次复用已选技能
-    agent 节点：create_react_agent 子图，绑定全部技能的工具
+    agent 节点：根据路由选中的技能，动态绑定仅选中技能的工具（不再绑定全部工具）
     """
     system_prompt = config.get("system_prompt", "")
     model_name = config.get("model_name", "deepseek-chat")
@@ -48,20 +48,6 @@ async def build_workflow(config: dict):
     max_iterations = config.get("max_iterations", 10)
 
     all_skills = get_all_skills()
-
-    # 预编译 Agent 子图：绑定所有技能的全部工具
-    all_tools = []
-    if all_skills:
-        all_tools, _ = resolve_skills(list(all_skills.keys()))
-
-    agent_subgraph = await create_agent_graph(
-        system_prompt=system_prompt,
-        tools_config=all_tools,
-        max_iterations=max_iterations,
-        api_key=api_key,
-        model_name=model_name,
-        base_url=base_url,
-    )
 
     # ── 路由节点 ──
     async def route_node(state: OrchestratorState):
@@ -103,10 +89,36 @@ async def build_workflow(config: dict):
 
         return {"selected_skills": routed_skills, "messages": new_msgs}
 
+    # ── Agent 节点：根据路由选中的技能，动态绑定仅选中技能的工具 ──
+    async def agent_node(state: OrchestratorState):
+        selected = state.get("selected_skills", [])
+        if selected:
+            selected_tools, _ = resolve_skills(selected)
+            add_log("🔧 Agent 工具", f"仅加载选中技能的工具: {selected}, 共 {len(selected_tools)} 个")
+        else:
+            selected_tools = []
+            add_log("🔧 Agent 工具", "未选中任何技能，不加载工具")
+
+        agent_graph = await create_agent_graph(
+            system_prompt=system_prompt,
+            tools_config=selected_tools,
+            max_iterations=max_iterations,
+            api_key=api_key,
+            model_name=model_name,
+            base_url=base_url,
+        )
+
+        result = await agent_graph.ainvoke(
+            {"messages": state["messages"], "remaining_steps": state.get("remaining_steps", 10),
+             "selected_skills": selected},
+        )
+
+        return {"messages": result["messages"], "selected_skills": selected}
+
     # ── 组装外层图：START → route → agent → END ──
     graph = StateGraph(OrchestratorState)
     graph.add_node("route", route_node)
-    graph.add_node("agent", agent_subgraph)
+    graph.add_node("agent", agent_node)
     graph.add_edge(START, "route")
     graph.add_edge("route", "agent")
     graph.add_edge("agent", END)

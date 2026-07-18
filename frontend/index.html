@@ -346,8 +346,8 @@
             const savePrompt = useCallback(async () => { try { await api('/prompt', { method: 'POST', body: JSON.stringify({ content: prompt }) }); showToast('✅ 提示词已保存'); } catch (err) { showToast('❌ ' + err.message); } }, [prompt, showToast]);
 
             const runAgent = useCallback(async (inputOverride) => {
-                // 优先用传入参数（架构图表单提交），否则从 ref 取最新值（避免 state 闭包问题）
-                const input = inputOverride !== undefined ? inputOverride : chatInputRef.current;
+                // inputOverride 为字符串（架构图表单）才使用，否则从 ref 取（按钮点击传的是 event 对象）
+                const input = typeof inputOverride === 'string' ? inputOverride : chatInputRef.current;
                 if (!input.trim()) return;
                 const userMsg = { role: 'user', content: input };
                 // 发送后清空输入框和 ref
@@ -465,7 +465,7 @@
                                 <div className="chat-input-row">
                                     {/* 同时更新 state 和 ref，确保 runAgent 通过 ref 拿到最新值 */}
                                     <textarea value={chatInput} onChange={e => { setChatInput(e.target.value); chatInputRef.current = e.target.value; }} onKeyDown={handleKeyDown} placeholder={running ? '运行中...' : '输入你的问题... (Enter 发送, Shift+Enter 换行)'} disabled={running} rows={2} />
-                                    <button className="chat-run-btn" onClick={runAgent} disabled={running || !chatInput.trim()}>{running ? '⏳ 运行中' : '▶ 运行'}</button>
+                                    <button className="chat-run-btn" onClick={runAgent} disabled={running}>{running ? '⏳ 运行中' : '▶ 运行'}</button>
                                 </div>
                             </div>
                         </div>

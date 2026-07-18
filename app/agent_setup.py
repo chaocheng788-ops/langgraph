@@ -54,6 +54,8 @@ async def create_agent_graph(
             api_key=api_key,
             base_url=base_url,
             temperature=0.7,
+            request_timeout=120,  # 工具调用（如 add_knowledge 加载模型）可能耗时较长
+            max_retries=2,
         )
         if tools:
             tool_names = [t.__name__ for t in tools]
@@ -70,6 +72,6 @@ async def create_agent_graph(
         prompt=system_prompt,
         state_schema=AgentState,
         checkpointer=await get_checkpointer(),
-        version="v2",
+        # 不指定 version，避免动态创建 agent 时 httpx 客户端被提前关闭
     )
     return graph
