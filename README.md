@@ -279,6 +279,9 @@ tools.json 用于管理自定义工具（HTTP API 工具等）。
 | GET | `/api/tools` | 获取工具列表 |
 | POST | `/api/tools` | 新增/更新工具 |
 | DELETE | `/api/tools/{name}` | 删除工具 |
+| GET | `/api/skills` | 获取技能列表 |
+| POST | `/api/skills` | 新增/更新技能 |
+| DELETE | `/api/skills/{name}` | 删除技能 |
 | GET | `/api/prompt` | 获取系统提示词 |
 | POST | `/api/prompt` | 保存系统提示词 |
 | POST | `/api/run` | 同步执行 Agent（返回完整结果） |
@@ -289,6 +292,94 @@ tools.json 用于管理自定义工具（HTTP API 工具等）。
 | GET | `/api/logs` | 获取最近执行日志 |
 
 ## 架构说明
+
+### Skill 路由架构
+
+项目采用 **Skill-as-Tool 路由模式**，实现技能自动发现和动态绑定：
+
+```
+用户输入 → Skill Router（LLM Function Calling）
+    │
+    ├─ 每个 Skill 生成一个 meta-tool（name=use_skill__xxx）
+    ├─ LLM 通过 tool_calls 选择最匹配的技能
+    └─ 解析选中的技能名 → 加载对应工具 + 注入专属提示词
+```
+
+**技能来源**（两套体系，合并使用）：
+- `skills/` 目录：文件定义的技能（prompt.md + YAML Front Matter + tools.json + tool.py）
+- `data/skills.json`：前端 API 创建的技能
+
+**路由策略**：
+- 首次对话：LLM Function Calling 自动发现
+- 后续轮次：复用已选技能，不重复路由
+- Fallback：LLM 不可用时，基于关键词匹配路由
+
+### 工具注册架构（三层分离）
+
+```
+skills/{name}/tool.py     ← 工具实现（Python 函数）
+skills/{name}/tools.json  ← 工具声明（接口描述）
+app/builtin_tools.py      ← 注册中心（import 并注册到 BUILTIN_TOOLS 字典）
+app/tool_factory.py       ← 查找入口（按名称匹配 BUILTIN_TOOLS/HTTP/Echo）
+```
+
+支持三种工具类型：
+- **内置工具**：名称匹配 BUILTIN_TOOLS 注册表 → 直接调用函数
+- **HTTP 工具**：配置了 url 字段 → 通过 HTTP 请求调用外部 API
+- **Echo 回退**：未匹配到内置工具且无 url → 原样返回参数
+
+### Skill 提示词机制
+
+每个 Skill 的 `prompt.md` 包含 YAML Front Matter（元数据）和 Markdown 正文（专属提示词）：
+
+```
+---
+name: knowledge_base
+description: 知识库检索与问答
+keywords: [知识库, 文档, 搜索]
+---
+
+# 一、技能权责
+你是一个知识库助手...
+```
+
+路由选中后，正文作为 SystemMessage 注入到 Agent 上下文，指导 LLM 调用哪些工具、如何回答。
+
+### 工作流编排（graph.py）
+
+```
+START → route（技能发现）→ agent（动态绑定工具执行）→ END
+          │
+          ├─ 首次对话: LLM Function Calling 选择技能
+          └─ 后续轮次: 复用已选技能
+                       │
+                       ▼
+              agent_node: 根据 selected_skills 动态创建 ReAct Agent
+                         仅绑定选中技能的工具（不再全部绑定）
+```
+
+### 执行日志与流式推送
+
+`execution_log.py` 提供全局日志系统，所有模块通过 `add_log()` 记录：
+- 模型请求/响应详情
+- 工具调用参数和返回值
+- 技能发现过程
+- 错误信息
+
+`server.py` 通过 SSE（Server-Sent Events）实时推送日志和 AI 响应到前端。
+
+### 多轮对话持久化
+
+`checkpointer.py` 基于 `AsyncSqliteSaver` 实现对话上下文持久化：
+- 存储到 `data/checkpoints.db`
+- 单例模式，全局复用数据库连接
+- 跨请求保持会话状态（selected_skills、messages 等）
+
+### 消息格式转换
+
+`message_converter.py` 负责 OpenAI 格式 ↔ LangChain 格式互转：
+- OpenAI 角色（system/user/assistant/tool）映射到 LangChain 消息类
+- 处理 tool_calls、tool_call_id、reasoning_content 等字段
 
 ### 模块拆分
 
@@ -309,17 +400,20 @@ tools.json 用于管理自定义工具（HTTP API 工具等）。
 ### 数据流
 
 ```
-前端 index.html (React)
+前端 index.html (React + Babel)
     │  POST /api/run-stream
     ▼
 server.py (FastAPI 子应用 /api)
     │  build_workflow(config)
     ▼
-graph.py (工作流构建入口)
-    │  create_agent_graph(...)
-    ▼
+graph.py (工作流编排入口)
+    ├── route_node: skill_router.py → LLM Function Calling 选择技能
+    └── agent_node: create_agent_graph() → 动态绑定选中技能的工具
+         │
+         ▼
 agent_setup.py (Agent 核心组装)
     ├── tool_factory.py → builtin_tools.py (内置工具)
+    ├── skill_router.py → skills/ 目录 (技能加载)
     ├── checkpointer.py → checkpoints.db (持久化)
-    └── execution_log.py (日志回调)
+    └── execution_log.py → SSE 推送 (日志回调)
 ```
