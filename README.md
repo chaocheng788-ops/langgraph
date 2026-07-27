@@ -72,7 +72,9 @@ langgraph/
 
 ### 1. 安装依赖
 
-**Python 版本要求**: 3.10+
+**Python 版本要求**: 3.14（faiss-cpu 预编译包兼容性，建议使用 3.14）
+
+> 注意：Windows 用户需安装 [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)，否则 faiss-cpu 会报"动态链接库初始化失败"。
 
 ```powershell
 # Windows 一键安装（自动创建 venv + 安装依赖 + 创建 data 目录）
@@ -181,19 +183,73 @@ Skill 支持路由模式：路由 LLM 根据用户意图自动选择最合适的
 
 基于 FAISS + SQLite 的本地向量检索知识库，完全自包含在 skill 目录内。
 
-**技术栈**：
-- **Embedding 模型**：`BAAI/bge-small-zh-v1.5`（智源中文语义模型，512 维，100MB）
-- **向量索引**：FAISS IndexFlatIP（内积精确搜索）
-- **元数据存储**：SQLite（文档标题、原文、来源、时间戳）
-- **文本切分**：Markdown 感知切分，按 `#` 标题分节，每节内 ≤500 字
+#### 技术栈
 
-**核心流程**：
+| 组件 | 技术 | 说明 |
+|------|------|------|
+| Embedding 模型 | `BAAI/bge-small-zh-v1.5` | 智源中文语义模型，512 维，2400 万参数，~100MB |
+| 推理引擎 | `sentence-transformers` | 加载模型 + `model.encode()` 一键转换文本→向量 |
+| 向量索引 | FAISS `IndexFlatIP` | 内积精确搜索（归一化后等价于余弦相似度） |
+| 元数据存储 | SQLite | 文档标题、原文、来源、时间戳 |
+| 文本切分 | Markdown 感知切分 | 按 `#` 标题分节，每节内 ≤500 字 |
+
+#### 核心流程
+
 ```
 入库: add_knowledge → Markdown 切分 → bge Embedding → SQLite + FAISS 双写
 检索: search_knowledge → bge Embedding → FAISS 内积搜索 → SQLite 查原文
 ```
 
-**使用方式**：
+#### Embedding 模型原理
+
+```
+文本 "迟到几次算旷工？"
+  → bge-small-zh-v1.5（12层 Transformer，2400万参数）
+  → 512 维向量 [0.08, 0.92, -0.34, 0.17, ...]
+  → L2 归一化（向量长度 = 1）
+  → 内积 = 余弦相似度（0~1，越接近 1 越相似）
+```
+
+> 模型越大 → 向量维度越多 → 区分能力越强。bge-small（512维）适合主题差异明显的文档；
+bge-large（1024维）适合需要区分细微差异的场景。
+
+#### FAISS 匹配逻辑
+
+FAISS 是一个**向量搜索引擎库**（非数据库），只负责"找相似"，不存原文：
+- `knowledge.index`：FAISS 二进制索引文件，存向量数字 + id 映射
+- `knowledge.db`：SQLite 数据库，存原文 + 元数据
+- 搜索时 FAISS 返回 id → SQLite 查原文，两者通过 id 关联
+
+```
+相似度: 查询向量·文档向量 = 内积值
+0.9-1.0 → 高度相关  0.7-0.9 → 比较相关
+0.5-0.7 → 有一定关联  0.5以下 → 基本不相关
+```
+
+> 和关键词搜索的区别：搜"旷工"也能匹配"缺勤""未到岗"等语义相近的表述。
+
+#### 数据存储
+
+| 文件 | 类型 | 存什么 | 读取方式 |
+|------|------|--------|---------|
+| `knowledge.index` | FAISS 二进制 | 向量数字 + id 映射 | `faiss.read_index()` |
+| `knowledge.db` | SQLite 数据库 | 原文 + 标题 + 来源 | `sqlite3.connect()` |
+
+> SQLite 理论上限 281TB，FAISS 在 10 万条以内用 Flat 索引毫秒级搜索。
+
+#### Embedding 模型 vs 对话模型
+
+| | Embedding 模型 | 对话模型（LLM） |
+|------|------|------|
+| 做什么 | 文本 → 向量 | 文本 → 文本 |
+| 本项目用 | `bge-small-zh-v1.5` | `deepseek-v4-pro` |
+| 输出 | 512个数字 | 自然语言回答 |
+| 运行方式 | 本地免费 | 调 API 付费 |
+
+> DeepSeek 对话模型暂不支持 Embedding。如需改用 API 形式（如阿里云 text-embedding-v3），
+> 只需替换 `_get_model()` 和 `model.encode()` 两个调用点，FAISS + SQLite 逻辑完全不变。
+
+#### 使用方式
 1. 前端左侧「技能」标签页开启 `knowledge_base`
 2. 对话中输入 `把以下内容加入知识库，标题：xxx` 即可入库
 3. 提问时 Agent 自动调用 `search_knowledge` 检索并基于结果回答
